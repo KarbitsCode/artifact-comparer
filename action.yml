@@ -1,0 +1,40 @@
+name: 'Artifact Comparer'
+description: 'Compare artifact file sizes between two builds'
+
+inputs:
+  base-artifact-name:
+    description: 'Name of the base artifact to compare against'
+    required: true
+  head-artifact-name:
+    description: 'Name of the head artifact to compare'
+    required: true
+  github-token:
+    description: 'GitHub token used to download artifacts'
+    required: true
+    default: ${{ github.token }}
+
+outputs:
+  comparison-result:
+    description: 'JSON string containing the file size comparison result'
+    value: ${{ steps.compare.outputs.comparison-result }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install dependencies
+      shell: bash
+      run: npm install --prefix ${{ github.action_path }}
+
+    - name: Compare artifacts
+      id: compare
+      shell: bash
+      env:
+        BASE_ARTIFACT_NAME: ${{ inputs.base-artifact-name }}
+        HEAD_ARTIFACT_NAME: ${{ inputs.head-artifact-name }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: node ${{ github.action_path }}/src/index.js
