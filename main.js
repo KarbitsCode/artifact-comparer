@@ -18,18 +18,21 @@ async function run() {
     const octokit = github.getOctokit(token);
     const { owner, repo } = github.context.repo;
 
-    // List artifacts for the current repository
-    const { data: artifactList } = await octokit.rest.actions.listArtifactsForRepo({
-      owner,
-      repo,
-    });
+    const artifacts = await octokit.paginate(
+      octokit.rest.actions.listArtifactsForRepo,
+      {
+        owner,
+        repo,
+        per_page: 100,
+      }
+    );
 
-    const baseArtifact = artifactList.artifacts.find(
-      (artifact) => artifact.name === baseArtifactName
-    );
-    const headArtifact = artifactList.artifacts.find(
-      (artifact) => artifact.name === headArtifactName
-    );
+    const baseArtifact = artifacts
+      .filter((artifact) => artifact.name === baseArtifactName)
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+    const headArtifact = artifacts
+      .filter((artifact) => artifact.name === headArtifactName)
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
 
     if (!baseArtifact) {
       throw new Error(`Base artifact '${baseArtifactName}' not found`);
@@ -43,7 +46,9 @@ async function run() {
     const headSizeBytes = headArtifact.size_in_bytes;
     const diffBytes = headSizeBytes - baseSizeBytes;
     const diffPercent =
-      baseSizeBytes === 0 ? 'N/A' : ((diffBytes / baseSizeBytes) * 100).toFixed(2);
+      baseSizeBytes === 0
+        ? null
+        : Number(((diffBytes / baseSizeBytes) * 100).toFixed(2));
 
     const result = {
       base: {
@@ -64,7 +69,8 @@ async function run() {
     core.setOutput('comparison-result', resultJson);
     core.info(`Comparison result: ${resultJson}`);
   } catch (error) {
-    core.setFailed(error.message);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    core.setFailed(errorMessage);
   }
 }
 

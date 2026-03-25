@@ -9,8 +9,8 @@ inputs:
     description: 'Name of the head artifact to compare'
     required: true
   github-token:
-    description: 'GitHub token used to download artifacts'
-    required: true
+    description: 'GitHub token used to list artifacts and read their metadata for size comparison'
+    required: false
     default: ${{ github.token }}
 
 outputs:
@@ -28,7 +28,7 @@ runs:
 
     - name: Install dependencies
       shell: bash
-      run: npm install --prefix ${{ github.action_path }}
+      run: npm ci --prefix ${{ github.action_path }}
 
     - name: Compare artifacts
       id: compare
