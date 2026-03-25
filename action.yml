@@ -37,4 +37,4 @@ runs:
         BASE_ARTIFACT_NAME: ${{ inputs.base-artifact-name }}
         HEAD_ARTIFACT_NAME: ${{ inputs.head-artifact-name }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
-      run: node ${{ github.action_path }}/src/index.js
+      run: node ${{ github.action_path }}/main.js
