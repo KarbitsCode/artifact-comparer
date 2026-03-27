@@ -37,7 +37,7 @@ runs:
         name: ${{ inputs.base-artifact-name }}
         path: ${{ runner.temp }}/artifact-comparer/base
         search_artifacts: true
-        if_no_artifact_found: ignore
+        if_no_artifact_found: warn
 
     - name: Compare artifacts
       id: compare
