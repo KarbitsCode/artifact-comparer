@@ -2,52 +2,81 @@ const core = require('@actions/core');
 const fs = require('node:fs');
 const path = require('node:path');
 
-function getDirectorySizeBytes(directoryPath) {
-  let totalSize = 0;
-  const entries = fs.readdirSync(directoryPath, { withFileTypes: true });
+const SUMMARY_HEADER_LINES = [
+  '## 📦 Artifact Size Report',
+  '',
+  '| File | Before (KB) | After (KB) | Delta |',
+  '|------|-------------|------------|-------|',
+];
 
-  for (const entry of entries) {
-    const fullPath = path.join(directoryPath, entry.name);
-    if (entry.isDirectory()) {
-      totalSize += getDirectorySizeBytes(fullPath);
-      continue;
-    }
-
-    if (entry.isFile()) {
-      totalSize += fs.statSync(fullPath).size;
-    }
-  }
-
-  return totalSize;
+function roundToHundredths(value) {
+  return Math.round(value * 100) / 100;
 }
 
-function getFileSizesKb(directoryPath, basePath = directoryPath) {
-  if (!fs.existsSync(directoryPath)) {
-    return {};
+async function pathExists(pathToCheck) {
+  try {
+    await fs.promises.access(pathToCheck);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function collectArtifactStats(
+  directoryPath,
+  basePath = directoryPath,
+  fileSizesKb = {}
+) {
+  if (!(await pathExists(directoryPath))) {
+    return { totalSizeBytes: 0, fileSizesKb };
   }
 
-  const entries = fs.readdirSync(directoryPath, { withFileTypes: true });
-  const sizes = {};
+  const entries = await fs.promises.readdir(directoryPath, { withFileTypes: true });
+  let totalSizeBytes = 0;
 
   for (const entry of entries) {
     const fullPath = path.join(directoryPath, entry.name);
 
     if (entry.isDirectory()) {
-      Object.assign(sizes, getFileSizesKb(fullPath, basePath));
+      const nestedStats = await collectArtifactStats(fullPath, basePath, fileSizesKb);
+      totalSizeBytes += nestedStats.totalSizeBytes;
       continue;
     }
 
     if (entry.isFile()) {
       const relativePath = path.relative(basePath, fullPath);
-      sizes[relativePath] = Math.round(fs.statSync(fullPath).size / 1024);
+      const stats = await fs.promises.stat(fullPath);
+      totalSizeBytes += stats.size;
+      fileSizesKb[relativePath] = roundToHundredths(stats.size / 1024);
     }
   }
 
-  return sizes;
+  return { totalSizeBytes, fileSizesKb };
 }
 
 function escapeMarkdownCell(value) {
-  return String(value).replace(/\|/g, '\\|');
+  return String(value).replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
+}
+
+function formatDelta(before, after) {
+  if (before !== undefined && after !== undefined) {
+    const diff = roundToHundredths(after - before);
+    if (diff === 0) {
+      return '0 KB';
+    }
+
+    return diff > 0 ? `+${diff} KB` : `${diff} KB`;
+  }
+
+  if (before === undefined && after !== undefined) {
+    return 'NEW';
+  }
+
+  if (before !== undefined && after === undefined) {
+    return 'REMOVED';
+  }
+
+  return '';
 }
 
 async function run() {
@@ -64,47 +93,42 @@ async function run() {
       throw new Error('BASE_ARTIFACT_PATH and HEAD_ARTIFACT_PATH must be set');
     }
 
-    if (!fs.existsSync(headArtifactPath)) {
+    if (!(await pathExists(headArtifactPath))) {
       throw new Error(`Head artifact path '${headArtifactPath}' not found`);
     }
 
-    const baseSizeBytes = fs.existsSync(baseArtifactPath)
-      ? getDirectorySizeBytes(baseArtifactPath)
-      : 0;
-    const headSizeBytes = getDirectorySizeBytes(headArtifactPath);
-    const baseFileSizesKb = getFileSizesKb(baseArtifactPath);
-    const headFileSizesKb = getFileSizesKb(headArtifactPath);
+    const baseStats = await collectArtifactStats(baseArtifactPath);
+    const headStats = await collectArtifactStats(headArtifactPath);
+    const baseSizeBytes = baseStats.totalSizeBytes;
+    const headSizeBytes = headStats.totalSizeBytes;
+    const baseFileSizesKb = baseStats.fileSizesKb;
+    const headFileSizesKb = headStats.fileSizesKb;
     const diffBytes = headSizeBytes - baseSizeBytes;
     const diffPercent =
       baseSizeBytes === 0
         ? null
         : Number(((diffBytes / baseSizeBytes) * 100).toFixed(2));
-    const allFiles = Array.from(
-      new Set([...Object.keys(baseFileSizesKb), ...Object.keys(headFileSizesKb)])
-    ).sort();
+    const fileSet = new Set();
+    for (const file of Object.keys(baseFileSizesKb)) {
+      fileSet.add(file);
+    }
+    for (const file of Object.keys(headFileSizesKb)) {
+      fileSet.add(file);
+    }
+    const allFiles = [...fileSet].sort();
 
-    let markdown = '## 📦 Artifact Size Report\n\n';
-    markdown += '| File | Before (KB) | After (KB) | Delta |\n';
-    markdown += '|------|-------------|------------|-------|\n';
+    const markdownRows = [...SUMMARY_HEADER_LINES];
 
     for (const file of allFiles) {
       const before = baseFileSizesKb[file];
       const after = headFileSizesKb[file];
-      let delta = '';
+      const delta = formatDelta(before, after);
 
-      if (before !== undefined && after !== undefined) {
-        const diff = after - before;
-        delta = diff === 0 ? '0 KB' : diff > 0 ? `+${diff} KB` : `${diff} KB`;
-      } else if (before === undefined && after !== undefined) {
-        delta = 'NEW';
-      } else if (before !== undefined && after === undefined) {
-        delta = 'REMOVED';
-      }
-
-      markdown += `| ${escapeMarkdownCell(file)} | ${before ?? '-'} | ${
-        after ?? '-'
-      } | ${delta} |\n`;
+      markdownRows.push(
+        `| ${escapeMarkdownCell(file)} | ${before ?? '-'} | ${after ?? '-'} | ${delta} |`
+      );
     }
+    const markdown = `${markdownRows.join('\n')}\n`;
 
     const result = {
       base: {
@@ -124,7 +148,14 @@ async function run() {
     const resultJson = JSON.stringify(result);
     core.setOutput('comparison-result', resultJson);
     if (process.env.GITHUB_STEP_SUMMARY) {
-      fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, markdown);
+      try {
+        await fs.promises.appendFile(process.env.GITHUB_STEP_SUMMARY, markdown);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        throw new Error(
+          `Failed to write step summary to ${process.env.GITHUB_STEP_SUMMARY}: ${errorMessage}`
+        );
+      }
     }
     core.info(`Comparison result: ${resultJson}`);
   } catch (error) {
