@@ -55,7 +55,15 @@ async function collectArtifactStats(
 }
 
 function escapeMarkdownCell(value) {
-  return String(value).replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
+  const normalized = String(value).replace(/\r?\n/g, ' ');
+
+  return normalized
+    // Escape backslashes first so subsequent escapes are stable
+    .replace(/\\/g, '\\\\')
+    // Escape pipes to keep table cell boundaries intact
+    .replace(/\|/g, '\\|')
+    // Escape additional Markdown metacharacters to prevent formatting/injection
+    .replace(/[`*_<>[\]\\()]/g, '\\$&');
 }
 
 function formatDelta(before, after) {
@@ -97,6 +105,19 @@ async function run() {
       throw new Error(`Head artifact path '${headArtifactPath}' not found`);
     }
 
+    let headStat;
+    try {
+      headStat = await fs.promises.stat(headArtifactPath);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Head artifact path '${headArtifactPath}' is not accessible: ${errorMessage}`
+      );
+    }
+
+    if (!headStat.isDirectory()) {
+      throw new Error(`Head artifact path '${headArtifactPath}' is not a directory`);
+    }
     const baseStats = await collectArtifactStats(baseArtifactPath);
     const headStats = await collectArtifactStats(headArtifactPath);
     const baseSizeBytes = baseStats.totalSizeBytes;
