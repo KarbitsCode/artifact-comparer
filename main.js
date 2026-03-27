@@ -36,15 +36,13 @@ async function run() {
       throw new Error('BASE_ARTIFACT_PATH and HEAD_ARTIFACT_PATH must be set');
     }
 
-    if (!fs.existsSync(baseArtifactPath)) {
-      throw new Error(`Base artifact path '${baseArtifactPath}' not found`);
-    }
-
     if (!fs.existsSync(headArtifactPath)) {
       throw new Error(`Head artifact path '${headArtifactPath}' not found`);
     }
 
-    const baseSizeBytes = getDirectorySizeBytes(baseArtifactPath);
+    const baseSizeBytes = fs.existsSync(baseArtifactPath)
+      ? getDirectorySizeBytes(baseArtifactPath)
+      : 0;
     const headSizeBytes = getDirectorySizeBytes(headArtifactPath);
     const diffBytes = headSizeBytes - baseSizeBytes;
     const diffPercent =
