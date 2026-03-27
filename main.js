@@ -57,13 +57,8 @@ async function collectArtifactStats(
 function escapeMarkdownCell(value) {
   const normalized = String(value).replace(/\r?\n/g, ' ');
 
-  return normalized
-    // Escape backslashes first so subsequent escapes are stable
-    .replace(/\\/g, '\\\\')
-    // Escape pipes to keep table cell boundaries intact
-    .replace(/\|/g, '\\|')
-    // Escape additional Markdown metacharacters to prevent formatting/injection
-    .replace(/[`*_<>[\]\\()]/g, '\\$&');
+  // Escape table delimiters and markdown metacharacters
+  return normalized.replace(/[\\|`*_<>()[\]]/g, '\\$&');
 }
 
 function formatDelta(before, after) {
