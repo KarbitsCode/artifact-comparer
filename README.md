@@ -21,3 +21,4 @@ The action outputs:
 
 Implementation notes:
 - the downloaded base artifact directory is automatically cleaned up at the end of the composite action (`if: always()` cleanup step)
+- comparer logic runs inline via `actions/github-script@v8.0.0` (no action-local npm install/runtime dependencies)
