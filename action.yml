@@ -30,12 +30,19 @@ runs:
       shell: bash
       run: npm ci --prefix ${{ github.action_path }}
 
+    - name: Prepare base artifact directory
+      id: base_artifact
+      shell: bash
+      run: |
+        BASE_DIR="$(mktemp -d "${RUNNER_TEMP}/artifact-comparer-base-XXXXXX")"
+        echo "base-dir=$BASE_DIR" >> "$GITHUB_OUTPUT"
+
     - name: Download base artifact
       uses: dawidd6/action-download-artifact@v19
       with:
         github_token: ${{ inputs.github-token }}
         name: ${{ inputs.base-artifact-name }}
-        path: ${{ runner.temp }}/artifact-comparer/base
+        path: ${{ steps.base_artifact.outputs.base-dir }}
         search_artifacts: true
         if_no_artifact_found: warn
 
@@ -44,6 +51,6 @@ runs:
       shell: bash
       env:
         BASE_ARTIFACT_NAME: ${{ inputs.base-artifact-name }}
-        BASE_ARTIFACT_PATH: ${{ runner.temp }}/artifact-comparer/base
+        BASE_ARTIFACT_PATH: ${{ steps.base_artifact.outputs.base-dir }}
         HEAD_ARTIFACT_PATH: ${{ inputs.head-artifact-dir }}
       run: node ${{ github.action_path }}/main.js
