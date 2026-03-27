@@ -1,49 +1,51 @@
 const core = require('@actions/core');
-const github = require('@actions/github');
+const fs = require('node:fs');
+const path = require('node:path');
+
+function getDirectorySizeBytes(directoryPath) {
+  let totalSize = 0;
+  const entries = fs.readdirSync(directoryPath, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const fullPath = path.join(directoryPath, entry.name);
+    if (entry.isDirectory()) {
+      totalSize += getDirectorySizeBytes(fullPath);
+      continue;
+    }
+
+    if (entry.isFile()) {
+      totalSize += fs.statSync(fullPath).size;
+    }
+  }
+
+  return totalSize;
+}
 
 async function run() {
   try {
     const baseArtifactName = process.env.BASE_ARTIFACT_NAME;
     const headArtifactName = process.env.HEAD_ARTIFACT_NAME;
-    const token = process.env.GITHUB_TOKEN;
+    const baseArtifactPath = process.env.BASE_ARTIFACT_PATH;
+    const headArtifactPath = process.env.HEAD_ARTIFACT_PATH;
 
     if (!baseArtifactName || !headArtifactName) {
       throw new Error('BASE_ARTIFACT_NAME and HEAD_ARTIFACT_NAME must be set');
     }
 
-    if (!token) {
-      throw new Error('GITHUB_TOKEN must be set');
+    if (!baseArtifactPath || !headArtifactPath) {
+      throw new Error('BASE_ARTIFACT_PATH and HEAD_ARTIFACT_PATH must be set');
     }
 
-    const octokit = github.getOctokit(token);
-    const { owner, repo } = github.context.repo;
-
-    const artifacts = await octokit.paginate(
-      octokit.rest.actions.listArtifactsForRepo,
-      {
-        owner,
-        repo,
-        per_page: 100,
-      }
-    );
-
-    const baseArtifact = artifacts
-      .filter((artifact) => artifact.name === baseArtifactName)
-      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
-    const headArtifact = artifacts
-      .filter((artifact) => artifact.name === headArtifactName)
-      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
-
-    if (!baseArtifact) {
-      throw new Error(`Base artifact '${baseArtifactName}' not found`);
+    if (!fs.existsSync(baseArtifactPath)) {
+      throw new Error(`Base artifact path '${baseArtifactPath}' not found`);
     }
 
-    if (!headArtifact) {
-      throw new Error(`Head artifact '${headArtifactName}' not found`);
+    if (!fs.existsSync(headArtifactPath)) {
+      throw new Error(`Head artifact path '${headArtifactPath}' not found`);
     }
 
-    const baseSizeBytes = baseArtifact.size_in_bytes;
-    const headSizeBytes = headArtifact.size_in_bytes;
+    const baseSizeBytes = getDirectorySizeBytes(baseArtifactPath);
+    const headSizeBytes = getDirectorySizeBytes(headArtifactPath);
     const diffBytes = headSizeBytes - baseSizeBytes;
     const diffPercent =
       baseSizeBytes === 0
@@ -52,11 +54,11 @@ async function run() {
 
     const result = {
       base: {
-        name: baseArtifact.name,
+        name: baseArtifactName,
         sizeBytes: baseSizeBytes,
       },
       head: {
-        name: headArtifact.name,
+        name: headArtifactName,
         sizeBytes: headSizeBytes,
       },
       diff: {
