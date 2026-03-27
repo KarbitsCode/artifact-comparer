@@ -24,12 +24,11 @@ function getDirectorySizeBytes(directoryPath) {
 async function run() {
   try {
     const baseArtifactName = process.env.BASE_ARTIFACT_NAME;
-    const headArtifactName = process.env.HEAD_ARTIFACT_NAME;
     const baseArtifactPath = process.env.BASE_ARTIFACT_PATH;
     const headArtifactPath = process.env.HEAD_ARTIFACT_PATH;
 
-    if (!baseArtifactName || !headArtifactName) {
-      throw new Error('BASE_ARTIFACT_NAME and HEAD_ARTIFACT_NAME must be set');
+    if (!baseArtifactName) {
+      throw new Error('BASE_ARTIFACT_NAME must be set');
     }
 
     if (!baseArtifactPath || !headArtifactPath) {
@@ -56,7 +55,7 @@ async function run() {
         sizeBytes: baseSizeBytes,
       },
       head: {
-        name: headArtifactName,
+        name: path.basename(path.resolve(headArtifactPath)),
         sizeBytes: headSizeBytes,
       },
       diff: {
