@@ -21,6 +21,35 @@ function getDirectorySizeBytes(directoryPath) {
   return totalSize;
 }
 
+function getFileSizesKb(directoryPath, basePath = directoryPath) {
+  if (!fs.existsSync(directoryPath)) {
+    return {};
+  }
+
+  const entries = fs.readdirSync(directoryPath, { withFileTypes: true });
+  const sizes = {};
+
+  for (const entry of entries) {
+    const fullPath = path.join(directoryPath, entry.name);
+
+    if (entry.isDirectory()) {
+      Object.assign(sizes, getFileSizesKb(fullPath, basePath));
+      continue;
+    }
+
+    if (entry.isFile()) {
+      const relativePath = path.relative(basePath, fullPath);
+      sizes[relativePath] = Math.round(fs.statSync(fullPath).size / 1024);
+    }
+  }
+
+  return sizes;
+}
+
+function escapeMarkdownCell(value) {
+  return String(value).replace(/\|/g, '\\|');
+}
+
 async function run() {
   try {
     const baseArtifactName = process.env.BASE_ARTIFACT_NAME;
@@ -43,11 +72,39 @@ async function run() {
       ? getDirectorySizeBytes(baseArtifactPath)
       : 0;
     const headSizeBytes = getDirectorySizeBytes(headArtifactPath);
+    const baseFileSizesKb = getFileSizesKb(baseArtifactPath);
+    const headFileSizesKb = getFileSizesKb(headArtifactPath);
     const diffBytes = headSizeBytes - baseSizeBytes;
     const diffPercent =
       baseSizeBytes === 0
         ? null
         : Number(((diffBytes / baseSizeBytes) * 100).toFixed(2));
+    const allFiles = Array.from(
+      new Set([...Object.keys(baseFileSizesKb), ...Object.keys(headFileSizesKb)])
+    ).sort();
+
+    let markdown = '## 📦 Artifact Size Report\n\n';
+    markdown += '| File | Before (KB) | After (KB) | Delta |\n';
+    markdown += '|------|-------------|------------|-------|\n';
+
+    for (const file of allFiles) {
+      const before = baseFileSizesKb[file];
+      const after = headFileSizesKb[file];
+      let delta = '';
+
+      if (before !== undefined && after !== undefined) {
+        const diff = after - before;
+        delta = diff === 0 ? '0 KB' : diff > 0 ? `+${diff} KB` : `${diff} KB`;
+      } else if (before === undefined && after !== undefined) {
+        delta = 'NEW';
+      } else if (before !== undefined && after === undefined) {
+        delta = 'REMOVED';
+      }
+
+      markdown += `| ${escapeMarkdownCell(file)} | ${before ?? '-'} | ${
+        after ?? '-'
+      } | ${delta} |\n`;
+    }
 
     const result = {
       base: {
@@ -66,6 +123,9 @@ async function run() {
 
     const resultJson = JSON.stringify(result);
     core.setOutput('comparison-result', resultJson);
+    if (process.env.GITHUB_STEP_SUMMARY) {
+      fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, markdown);
+    }
     core.info(`Comparison result: ${resultJson}`);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
