@@ -54,3 +54,21 @@ runs:
         BASE_ARTIFACT_PATH: ${{ steps.base_artifact.outputs.base-dir }}
         HEAD_ARTIFACT_PATH: ${{ inputs.head-artifact-dir }}
       run: node ${{ github.action_path }}/main.js
+
+    - name: Cleanup base artifact directory
+      if: always()
+      shell: bash
+      env:
+        BASE_ARTIFACT_PATH: ${{ steps.base_artifact.outputs.base-dir }}
+        RUNNER_TEMP_DIR: ${{ runner.temp }}
+      run: |
+        if [[ "$BASE_ARTIFACT_PATH" == "$RUNNER_TEMP_DIR/artifact-comparer-base-"* ]]; then
+          if rm -rf "$BASE_ARTIFACT_PATH"; then
+            echo "Cleaned up base artifact directory: $BASE_ARTIFACT_PATH"
+          else
+            rm_exit=$?
+            echo "Failed to clean up base artifact directory: $BASE_ARTIFACT_PATH (rm exit code: $rm_exit)"
+          fi
+        else
+          echo "Skipping cleanup - path does not match expected pattern '$RUNNER_TEMP_DIR/artifact-comparer-base-*': $BASE_ARTIFACT_PATH"
+        fi

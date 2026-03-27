@@ -18,3 +18,6 @@ Equivalent usage:
 The action outputs:
 - `comparison-result` JSON with base/head total size and delta
 - a GitHub Actions step summary table with per-file KB before/after and delta (`NEW`/`REMOVED`/`±n KB`)
+
+Implementation notes:
+- the downloaded base artifact directory is automatically cleaned up at the end of the composite action (`if: always()` cleanup step)
