@@ -2,10 +2,10 @@ name: 'Artifact Comparer'
 description: 'Compare artifact file sizes between two builds'
 
 inputs:
-  base-artifact-name:
+  artifact-name:
     description: 'Name of the base artifact to compare against'
     required: true
-  head-artifact-dir:
+  path:
     description: 'Directory path of the new/head artifact already available in the workspace'
     required: true
   github-token:
@@ -41,7 +41,7 @@ runs:
       uses: dawidd6/action-download-artifact@v19
       with:
         github_token: ${{ inputs.github-token }}
-        name: ${{ inputs.base-artifact-name }}
+        name: ${{ inputs.artifact-name }}
         path: ${{ steps.base_artifact.outputs.base-dir }}
         search_artifacts: true
         if_no_artifact_found: warn
@@ -50,9 +50,9 @@ runs:
       id: compare
       shell: bash
       env:
-        BASE_ARTIFACT_NAME: ${{ inputs.base-artifact-name }}
+        BASE_ARTIFACT_NAME: ${{ inputs.artifact-name }}
         BASE_ARTIFACT_PATH: ${{ steps.base_artifact.outputs.base-dir }}
-        HEAD_ARTIFACT_PATH: ${{ inputs.head-artifact-dir }}
+        HEAD_ARTIFACT_PATH: ${{ inputs.path }}
       run: node ${{ github.action_path }}/main.js
 
     - name: Cleanup base artifact directory

@@ -11,8 +11,8 @@ Equivalent usage:
 - uses: KarbitsCode/artifact-comparer@main
   id: compare
   with:
-    base-artifact-name: windows-latest-build
-    head-artifact-dir: ./out
+    artifact-name: windows-latest-build
+    path: ./out
 ```
 
 The action outputs:
