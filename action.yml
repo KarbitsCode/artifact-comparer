@@ -103,10 +103,15 @@ runs:
           
           function escapeMarkdownCell(value) {
             const normalized = String(value).replace(/\r?\n/g, ' ');
-            return normalized
+            const htmlEscaped = normalized
+              .replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;');
+            return htmlEscaped
               .replace(/\\/g, '\\\\')
               .replace(/\|/g, '\\|')
-              .replace(/[`*_<>\[\](){}]/g, (match) => `\\${match}`);
+              .replace(/[`*_\[\](){}]/g, (match) => `\\${match}`);
           }
           
           function formatDelta(before, after) {
