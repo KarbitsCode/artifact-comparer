@@ -5,7 +5,7 @@ This action is a reusable combination of:
 1. Downloading the previous/base artifact (via `dawidd6/action-download-artifact@v19`)
 2. Comparing it against your current build directory and writing a markdown report
 
-Equivalent usage:
+Example usage:
 
 ```yaml
 - uses: KarbitsCode/artifact-comparer@main
