@@ -221,7 +221,11 @@ runs:
           core.setOutput('comparison-result', resultJson);
           
           if (process.env.GITHUB_STEP_SUMMARY) {
-            await fs.promises.appendFile(process.env.GITHUB_STEP_SUMMARY, markdown);
+            try {
+              await fs.promises.appendFile(process.env.GITHUB_STEP_SUMMARY, markdown);
+            } catch (error) {
+              core.warning(`Failed to write step summary: ${error instanceof Error ? error.message : String(error)}`);
+            }
           }
           
           core.info(`Comparison result: ${resultJson}`);
