@@ -37,7 +37,7 @@ runs:
       with:
         github_token: ${{ inputs.github-token }}
         name: ${{ inputs.artifact-name }}
-        path: ${{ steps.base_artifact.outputs.base-dir }}
+        path: ${{ steps.base_artifact.outputs['base-dir'] }}
         search_artifacts: true
         if_no_artifact_found: warn
 
@@ -46,7 +46,7 @@ runs:
       uses: actions/github-script@v8.0.0
       env:
         BASE_ARTIFACT_NAME: ${{ inputs.artifact-name }}
-        BASE_ARTIFACT_PATH: ${{ steps.base_artifact.outputs.base-dir }}
+        BASE_ARTIFACT_PATH: ${{ steps.base_artifact.outputs['base-dir'] }}
         HEAD_ARTIFACT_PATH: ${{ inputs.path }}
       with:
         script: |
@@ -233,7 +233,7 @@ runs:
           core.info(`Comparison result: ${resultJson}`);
 
     - name: Cleanup base artifact directory
-      if: ${{ always() && startsWith(steps.base_artifact.outputs.base-dir, steps.base_artifact.outputs.base-prefix) }}
+      if: ${{ always() && startsWith(steps.base_artifact.outputs['base-dir'], steps.base_artifact.outputs['base-prefix']) }}
       uses: JesseTG/rm@v1.0.3
       with:
-        path: ${{ steps.base_artifact.outputs.base-dir }}
+        path: ${{ steps.base_artifact.outputs['base-dir'] }}
