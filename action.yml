@@ -50,187 +50,89 @@ runs:
         HEAD_ARTIFACT_PATH: ${{ inputs.path }}
       with:
         script: |
-          const fs = require('node:fs');
-          const path = require('node:path');
+          const fs = require('fs');
+          const path = require('path');
           
-          const SUMMARY_HEADER_LINES = [
-            '## 📦 Artifact Size Report',
-            '',
-            '| File | Before (KB) | After (KB) | Delta |',
-            '|------|-------------|------------|-------|',
-          ];
-          
-          function roundToHundredths(value) {
-            return Math.round(value * 100) / 100;
-          }
-          
-          async function pathExists(pathToCheck) {
-            try {
-              await fs.promises.access(pathToCheck);
-              return true;
-            } catch {
-              return false;
-            }
-          }
-          
-          async function collectArtifactStats(
-            directoryPath,
-            basePath = directoryPath,
-            fileSizesKb = {}
-          ) {
-            if (!(await pathExists(directoryPath))) {
-              return { totalSizeBytes: 0, fileSizesKb };
-            }
-          
-            const entries = await fs.promises.readdir(directoryPath, { withFileTypes: true });
-            let totalSizeBytes = 0;
-          
-            for (const entry of entries) {
-              const fullPath = path.join(directoryPath, entry.name);
-          
-              if (entry.isDirectory()) {
-                const nestedStats = await collectArtifactStats(fullPath, basePath, fileSizesKb);
-                totalSizeBytes += nestedStats.totalSizeBytes;
-                continue;
-              }
-          
-              if (entry.isFile()) {
-                const relativePath = path.relative(basePath, fullPath);
-                const stats = await fs.promises.stat(fullPath);
-                totalSizeBytes += stats.size;
-                fileSizesKb[relativePath] = roundToHundredths(stats.size / 1024);
+          function getStats(dir, base = dir, sizes = {}) {
+            if (!fs.existsSync(dir)) return { total: 0, sizes };
+            let total = 0;
+            const entries = fs.readdirSync(dir, { withFileTypes: true });
+            for (const e of entries) {
+              const full = path.join(dir, e.name);
+              if (e.isDirectory()) {
+                const nested = getStats(full, base, sizes);
+                total += nested.total;
+              } else {
+                const rel = path.relative(base, full);
+                const size = fs.statSync(full).size;
+                total += size;
+                sizes[rel] = Math.round(size / 1024);
               }
             }
-          
-            return { totalSizeBytes, fileSizesKb };
-          }
-          
-          function escapeMarkdownCell(value) {
-            const normalized = String(value).replace(/\r?\n/g, ' ');
-            const htmlEscaped = normalized
-              .replace(/&/g, '&amp;')
-              .replace(/</g, '&lt;')
-              .replace(/>/g, '&gt;')
-              .replace(/"/g, '&quot;')
-              .replace(/'/g, '&#39;');
-            return htmlEscaped
-              .replace(/\\/g, '\\\\')
-              .replace(/\|/g, '\\|')
-              .replace(/[`*_\[\](){}]/g, (match) => `\\${match}`);
+            return { total, sizes };
           }
           
           function formatDelta(before, after) {
             if (before !== undefined && after !== undefined) {
-              const diff = roundToHundredths(after - before);
-              if (diff === 0) {
-                return '0 KB';
-              }
-          
-              return diff > 0 ? `+${diff} KB` : `${diff} KB`;
+              const diff = after - before;
+              return diff === 0 ? '0 KB' : (diff > 0 ? `+${diff} KB` : `${diff} KB`);
             }
-          
-            if (before === undefined && after !== undefined) {
-              return 'NEW';
-            }
-          
-            if (before !== undefined && after === undefined) {
-              return 'REMOVED';
-            }
-          
+            if (before === undefined) return 'NEW';
+            if (after === undefined) return 'REMOVED';
             return '';
           }
           
-          const baseArtifactName = process.env.BASE_ARTIFACT_NAME;
-          const baseArtifactPath = process.env.BASE_ARTIFACT_PATH;
-          const headArtifactPath = process.env.HEAD_ARTIFACT_PATH;
-          
-          if (!baseArtifactName) {
-            throw new Error('BASE_ARTIFACT_NAME must be set');
-          }
-          
-          if (!baseArtifactPath || !headArtifactPath) {
-            throw new Error('BASE_ARTIFACT_PATH and HEAD_ARTIFACT_PATH must be set');
-          }
-          
-          if (!(await pathExists(headArtifactPath))) {
-            throw new Error(`Head artifact path '${headArtifactPath}' not found`);
-          }
-          
-          let headStat;
-          try {
-            headStat = await fs.promises.stat(headArtifactPath);
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            throw new Error(
-              `Head artifact path '${headArtifactPath}' is not accessible: ${errorMessage}`
-            );
-          }
-          
-          if (!headStat.isDirectory()) {
-            throw new Error(`Head artifact path '${headArtifactPath}' is not a directory`);
-          }
-          
-          const baseStats = await collectArtifactStats(baseArtifactPath);
-          const headStats = await collectArtifactStats(headArtifactPath);
-          const baseSizeBytes = baseStats.totalSizeBytes;
-          const headSizeBytes = headStats.totalSizeBytes;
-          const baseFileSizesKb = baseStats.fileSizesKb;
-          const headFileSizesKb = headStats.fileSizesKb;
-          const diffBytes = headSizeBytes - baseSizeBytes;
-          const diffPercent =
-            baseSizeBytes === 0
-              ? null
-              : roundToHundredths((diffBytes / baseSizeBytes) * 100);
-          
-          const fileSet = new Set();
-          for (const file of Object.keys(baseFileSizesKb)) {
-            fileSet.add(file);
-          }
-          for (const file of Object.keys(headFileSizesKb)) {
-            fileSet.add(file);
-          }
-          const allFiles = [...fileSet].sort();
-          
-          const markdownRows = [...SUMMARY_HEADER_LINES];
-          for (const file of allFiles) {
-            const before = baseFileSizesKb[file];
-            const after = headFileSizesKb[file];
-            const delta = formatDelta(before, after);
-          
-            markdownRows.push(
-              `| ${escapeMarkdownCell(file)} | ${before ?? '-'} | ${after ?? '-'} | ${delta} |`
-            );
-          }
-          
-          const markdown = `${markdownRows.join('\n')}\n`;
-          
-          const result = {
-            base: {
-              name: baseArtifactName,
-              sizeBytes: baseSizeBytes,
-            },
-            head: {
-              name: path.basename(path.resolve(headArtifactPath)),
-              sizeBytes: headSizeBytes,
-            },
-            diff: {
-              bytes: diffBytes,
-              percent: diffPercent,
-            },
-          };
-          
-          const resultJson = JSON.stringify(result);
-          core.setOutput('comparison-result', resultJson);
-          
-          if (process.env.GITHUB_STEP_SUMMARY) {
-            try {
-              await fs.promises.appendFile(process.env.GITHUB_STEP_SUMMARY, markdown);
-            } catch (error) {
-              core.warning(`Failed to write step summary: ${error instanceof Error ? error.message : String(error)}`);
+          function buildMarkdown(rows) {
+            let md = '## 📦 Artifact Size Report\n\n';
+            md += '| File | Before (KB) | After (KB) | Delta |\n';
+            md += '|------|-------------|------------|-------|\n';
+            for (const r of rows) {
+              md += `| ${r.file} | ${r.before} | ${r.after} | ${r.delta} |\n`;
             }
+            return md;
           }
           
-          core.info(`Comparison result: ${resultJson}`);
+          function compare(baseDir, headDir) {
+            const base = getStats(baseDir);
+            const head = getStats(headDir);
+            const allFiles = [...new Set([
+              ...Object.keys(base.sizes),
+              ...Object.keys(head.sizes)
+            ])].sort();
+            const rows = [];
+            for (const file of allFiles) {
+              const before = base.sizes[file];
+              const after = head.sizes[file];
+              rows.push({
+                file,
+                before: before ?? '-',
+                after: after ?? '-',
+                delta: formatDelta(before, after)
+              });
+            }
+            return {
+              baseSize: base.total,
+              headSize: head.total,
+              diff: head.total - base.total,
+              rows
+            };
+          }
+          
+          // ===== main =====
+          const baseDir = './old_dist';
+          const headDir = './dist';
+          const result = compare(baseDir, headDir);
+          const markdown = buildMarkdown(result.rows);
+          console.log(markdown);
+          if (process.env.GITHUB_STEP_SUMMARY) {
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, markdown);
+          }
+          const json = {
+            base: { sizeBytes: result.baseSize },
+            head: { sizeBytes: result.headSize },
+            diff: { bytes: result.diff }
+          };
+          console.log('Result:', JSON.stringify(json));
 
     - name: Cleanup base artifact directory
       if: ${{ always() && startsWith(steps.base_artifact.outputs['base-dir'], steps.base_artifact.outputs['base-prefix']) }}
