@@ -28,7 +28,9 @@ runs:
         $baseDir = Join-Path $env:RUNNER_TEMP ("artifact-comparer-base-" + [guid]::NewGuid().ToString("N"))
         New-Item -ItemType Directory -Path $baseDir | Out-Null
         $normalizedBaseDir = ($baseDir -replace '\\', '/') -replace '[\r\n]+', ''
+        $normalizedBasePrefix = ((Join-Path $env:RUNNER_TEMP 'artifact-comparer-base-') -replace '\\', '/') -replace '[\r\n]+', ''
         Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value ('base-dir={0}' -f $normalizedBaseDir)
+        Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value ('base-prefix={0}' -f $normalizedBasePrefix)
 
     - name: Download base artifact
       uses: dawidd6/action-download-artifact@v19
@@ -231,7 +233,7 @@ runs:
           core.info(`Comparison result: ${resultJson}`);
 
     - name: Cleanup base artifact directory
-      if: ${{ always() && startsWith(steps.base_artifact.outputs.base-dir, format('{0}/artifact-comparer-base-', replace(runner.temp, '\\', '/'))) }}
+      if: ${{ always() && startsWith(steps.base_artifact.outputs.base-dir, steps.base_artifact.outputs.base-prefix) }}
       uses: JesseTG/rm@v1.0.3
       with:
         path: ${{ steps.base_artifact.outputs.base-dir }}
