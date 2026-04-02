@@ -119,9 +119,19 @@ runs:
           }
           
           // ===== main =====
-          const baseDir = './old_dist';
-          const headDir = './dist';
-          const result = compare(baseDir, headDir);
+          const baseArtifactName = process.env.BASE_ARTIFACT_NAME;
+          const baseArtifactPath = process.env.BASE_ARTIFACT_PATH;
+          const baseArtifactPath = process.env.HEAD_ARTIFACT_PATH;
+          if (!baseArtifactName) {
+            throw new Error('BASE_ARTIFACT_NAME must be set');
+          }
+          if (!baseArtifactPath || !headArtifactPath) {
+            throw new Error('BASE_ARTIFACT_PATH and HEAD_ARTIFACT_PATH must be set');
+          }
+          if (!fs.existsSync(headArtifactPath)) {
+            throw new Error(`Head artifact path '${headArtifactPath}' not found`);
+          }
+          const result = compare(baseArtifactPath, baseArtifactPath);
           const markdown = buildMarkdown(result.rows);
           console.log(markdown);
           if (process.env.GITHUB_STEP_SUMMARY) {
