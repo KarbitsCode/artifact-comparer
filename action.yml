@@ -23,10 +23,11 @@ runs:
   steps:
     - name: Prepare base artifact directory
       id: base_artifact
-      shell: bash
+      shell: pwsh
       run: |
-        BASE_DIR="$(mktemp -d "${RUNNER_TEMP}/artifact-comparer-base-XXXXXX")"
-        echo "base-dir=$BASE_DIR" >> "$GITHUB_OUTPUT"
+        $baseDir = Join-Path $env:RUNNER_TEMP ("artifact-comparer-base-" + [guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Path $baseDir | Out-Null
+        "base-dir=$($baseDir -replace '\\', '/')" >> $env:GITHUB_OUTPUT
 
     - name: Download base artifact
       uses: dawidd6/action-download-artifact@v19
@@ -225,7 +226,7 @@ runs:
           core.info(`Comparison result: ${resultJson}`);
 
     - name: Cleanup base artifact directory
-      if: ${{ always() && startsWith(steps.base_artifact.outputs.base-dir, format('{0}/artifact-comparer-base-', runner.temp)) }}
+      if: ${{ always() && startsWith(replace(steps.base_artifact.outputs.base-dir, '\', '/'), format('{0}/artifact-comparer-base-', replace(runner.temp, '\', '/'))) }}
       uses: JesseTG/rm@v1.0.3
       with:
         path: ${{ steps.base_artifact.outputs.base-dir }}
