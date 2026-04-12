@@ -6,7 +6,7 @@ inputs:
     description: 'Name of the base artifact to compare against'
     required: true
   path:
-    description: 'Directory path of the new/head artifact already available in the workspace'
+    description: 'File or directory path of the new/head artifact already available in the workspace'
     required: true
   github-token:
     description: 'GitHub token used to download the base artifact from previous workflow runs'
@@ -51,21 +51,24 @@ runs:
         script: |
           const fs = require('fs');
           const path = require('path');
-          
-          function getStats(dir, base = dir, sizes = {}) {
-            if (!fs.existsSync(dir)) return { total: 0, sizes };
+
+          function getStats(target, base = target, sizes = {}) {
             let total = 0;
-            const entries = fs.readdirSync(dir, { withFileTypes: true });
-            for (const e of entries) {
-              const full = path.join(dir, e.name);
-              if (e.isDirectory()) {
-                const nested = getStats(full, base, sizes);
-                total += nested.total;
-              } else {
-                const rel = path.relative(base, full);
-                const size = fs.statSync(full).size;
-                total += size;
-                sizes[rel] = Math.round(size / 1024);
+            if (fs.existsSync(target)) {
+              const stat = fs.lstatSync(target);
+              if (!stat.isSymbolicLink()) {
+                if (stat.isFile()) {
+                  const rel = path.relative(base, target) || path.basename(target);
+                  sizes[rel] = Math.round(stat.size / 1024);
+                  total += stat.size;
+                } else if (stat.isDirectory()) {
+                  const entries = fs.readdirSync(target);
+                  for (const name of entries) {
+                    const full = path.join(target, name);
+                    const nested = getStats(full, base, sizes);
+                    total += nested.total;
+                  }
+                }
               }
             }
             return { total, sizes };
