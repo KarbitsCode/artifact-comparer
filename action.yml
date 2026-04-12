@@ -55,7 +55,7 @@ runs:
           function getStats(target, base = target, sizes = {}) {
             let total = 0;
             if (fs.existsSync(target)) {
-              const stat = fs.statSync(target);
+              const stat = fs.lstatSync(target);
               if (stat.isFile()) {
                 const rel = path.relative(base, target) || path.basename(target);
                 sizes[rel] = Math.round(stat.size / 1024);
@@ -64,8 +64,15 @@ runs:
                 const entries = fs.readdirSync(target, { withFileTypes: true });
                 for (const e of entries) {
                   const full = path.join(target, e.name);
-                  const nested = getStats(full, base, sizes);
-                  total += nested.total;
+                  if (e.isFile()) {
+                    const fileStat = fs.statSync(full);
+                    const rel = path.relative(base, full) || path.basename(full);
+                    sizes[rel] = Math.round(fileStat.size / 1024);
+                    total += fileStat.size;
+                  } else if (e.isDirectory()) {
+                    const nested = getStats(full, base, sizes);
+                    total += nested.total;
+                  }
                 }
               }
             }
