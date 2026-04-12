@@ -53,9 +53,9 @@ runs:
           const path = require('path');
           
           function getStats(target, base = target, sizes = {}) {
+            let total = 0;
             if (fs.existsSync(target)) {
               const stat = fs.statSync(target);
-              let total = 0;
               if (stat.isFile()) {
                 const rel = path.relative(base, target) || path.basename(target);
                 sizes[rel] = Math.round(stat.size / 1024);
@@ -68,9 +68,8 @@ runs:
                   total += nested.total;
                 }
               }
-              return { total, sizes };
             }
-            return { total: 0, sizes };
+            return { total, sizes };
           }
           
           function formatDelta(before, after) {
