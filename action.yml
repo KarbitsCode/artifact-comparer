@@ -56,19 +56,18 @@ runs:
             let total = 0;
             if (fs.existsSync(target)) {
               const stat = fs.lstatSync(target);
-              if (stat.isFile()) {
-                const rel = path.relative(base, target) || path.basename(target);
-                sizes[rel] = Math.round(stat.size / 1024);
-                total += stat.size;
-              } else if (stat.isDirectory()) {
-                const entries = fs.readdirSync(target, { withFileTypes: true });
-                for (const e of entries) {
-                  const full = path.join(target, e.name);
-                  if (e.isSymbolicLink()) {
-                    continue;
+              if (!stat.isSymbolicLink()) {
+                if (stat.isFile()) {
+                  const rel = path.relative(base, target) || path.basename(target);
+                  sizes[rel] = Math.round(stat.size / 1024);
+                  total += stat.size;
+                } else if (stat.isDirectory()) {
+                  const entries = fs.readdirSync(target);
+                  for (const name of entries) {
+                    const full = path.join(target, name);
+                    const nested = getStats(full, base, sizes);
+                    total += nested.total;
                   }
-                  const nested = getStats(full, base, sizes);
-                  total += nested.total;
                 }
               }
             }
