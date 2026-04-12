@@ -53,23 +53,24 @@ runs:
           const path = require('path');
           
           function getStats(target, base = target, sizes = {}) {
-            if (!fs.existsSync(target)) return { total: 0, sizes };
-            const stat = fs.statSync(target);
-            if (stat.isFile()) {
-              const rel = path.relative(base, target) || path.basename(target);
-              sizes[rel] = Math.round(stat.size / 1024);
-              return { total: stat.size, sizes };
-            } else if (!stat.isDirectory()) {
-              return { total: 0, sizes };
+            if (fs.existsSync(target)) {
+              const stat = fs.statSync(target);
+              let total = 0;
+              if (stat.isFile()) {
+                const rel = path.relative(base, target) || path.basename(target);
+                sizes[rel] = Math.round(stat.size / 1024);
+                total += stat.size;
+              } else if (stat.isDirectory()) {
+                const entries = fs.readdirSync(target, { withFileTypes: true });
+                for (const e of entries) {
+                  const full = path.join(target, e.name);
+                  const nested = getStats(full, base, sizes);
+                  total += nested.total;
+                }
+              }
+              return { total, sizes };
             }
-            let total = 0;
-            const entries = fs.readdirSync(target, { withFileTypes: true });
-            for (const e of entries) {
-              const full = path.join(target, e.name);
-              const nested = getStats(full, base, sizes);
-              total += nested.total;
-            }
-            return { total, sizes };
+            return { total: 0, sizes };
           }
           
           function formatDelta(before, after) {
