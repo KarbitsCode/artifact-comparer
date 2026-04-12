@@ -64,10 +64,11 @@ runs:
                 const entries = fs.readdirSync(target, { withFileTypes: true });
                 for (const e of entries) {
                   const full = path.join(target, e.name);
-                  if (e.isFile() || e.isDirectory()) {
-                    const nested = getStats(full, base, sizes);
-                    total += nested.total;
+                  if (e.isSymbolicLink()) {
+                    continue;
                   }
+                  const nested = getStats(full, base, sizes);
+                  total += nested.total;
                 }
               }
             }
