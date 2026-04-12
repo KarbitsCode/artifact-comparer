@@ -51,19 +51,15 @@ runs:
         script: |
           const fs = require('fs');
           const path = require('path');
-          
-          function addFileSize(target, base, sizes, sizeBytes) {
-            const rel = path.relative(base, target) || path.basename(target);
-            sizes[rel] = Math.round(sizeBytes / 1024);
-            return sizeBytes;
-          }
 
           function getStats(target, base = target, sizes = {}) {
             let total = 0;
             if (fs.existsSync(target)) {
               const stat = fs.lstatSync(target);
               if (stat.isFile()) {
-                total += addFileSize(target, base, sizes, stat.size);
+                const rel = path.relative(base, target) || path.basename(target);
+                sizes[rel] = Math.round(stat.size / 1024);
+                total += stat.size;
               } else if (stat.isDirectory()) {
                 const entries = fs.readdirSync(target, { withFileTypes: true });
                 for (const e of entries) {
