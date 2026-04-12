@@ -68,14 +68,9 @@ runs:
                 const entries = fs.readdirSync(target, { withFileTypes: true });
                 for (const e of entries) {
                   const full = path.join(target, e.name);
-                  if (e.isFile()) {
-                    const fileStat = fs.lstatSync(full);
-                    total += addFileSize(full, base, sizes, fileStat.size);
-                  } else if (e.isDirectory()) {
+                  if (e.isFile() || e.isDirectory()) {
                     const nested = getStats(full, base, sizes);
                     total += nested.total;
-                  } else {
-                    // Ignore symlinks and other non-regular entries.
                   }
                 }
               }
