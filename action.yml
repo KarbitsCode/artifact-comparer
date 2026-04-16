@@ -51,7 +51,6 @@ runs:
         script: |
           const fs = require('fs');
           const path = require('path');
-          const glob = require('@actions/glob');
 
           function getStats(target, base = target, sizes = {}) {
             let total = 0;
@@ -98,6 +97,47 @@ runs:
             return commonParts.length ? path.join(baseRoot, ...commonParts) : baseRoot;
           }
 
+          const hasGlobChars = (value) => /[*?[\]{}]/.test(value);
+
+          function getGlobSearchRoot(pattern) {
+            const normalized = pattern.replace(/\\/g, '/');
+            const isAbsolutePattern = normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized);
+            const staticParts = [];
+            for (const [index, segment] of normalized.split('/').entries()) {
+              if (segment === '' && index === 0) {
+                staticParts.push(segment);
+                continue;
+              }
+              if (hasGlobChars(segment)) break;
+              staticParts.push(segment);
+            }
+            if (staticParts.length === 0 || (staticParts.length === 1 && staticParts[0] === '')) {
+              return isAbsolutePattern ? path.parse(path.resolve(pattern)).root : process.cwd();
+            }
+            return path.resolve(staticParts.join(path.sep));
+          }
+
+          function collectGlobFileMatches(pattern, root = getGlobSearchRoot(pattern), matches = []) {
+            if (!fs.existsSync(root)) return matches;
+            const stat = fs.lstatSync(root);
+            if (stat.isSymbolicLink()) return matches;
+            if (stat.isFile()) {
+              const rel = path.relative(process.cwd(), root).split(path.sep).join('/');
+              if (
+                path.matchesGlob(root, pattern) ||
+                path.matchesGlob(rel, pattern) ||
+                path.matchesGlob(`./${rel}`, pattern)
+              ) {
+                matches.push(path.resolve(root));
+              }
+              return matches;
+            }
+            for (const name of fs.readdirSync(root)) {
+              collectGlobFileMatches(pattern, path.join(root, name), matches);
+            }
+            return matches;
+          }
+
           async function resolveHeadTargets(targetPattern) {
             if (fs.existsSync(targetPattern)) {
               const resolved = path.resolve(targetPattern);
@@ -108,18 +148,16 @@ runs:
               };
             }
 
-            const globber = await glob.create(targetPattern, {
-              followSymbolicLinks: false,
-              implicitDescendants: false,
-              omitBrokenSymbolicLinks: true
-            });
-            const matches = (await globber.glob()).map((matchedPath) => path.resolve(matchedPath));
+            if (typeof path.matchesGlob !== 'function') {
+              throw new Error('Glob pattern support requires path.matchesGlob in the Node runtime');
+            }
+            const matches = collectGlobFileMatches(targetPattern);
             if (matches.length === 0) {
               throw new Error(`Head artifact path or glob '${targetPattern}' matched no files`);
             }
             return {
               targets: matches,
-              root: getCommonRoot(matches)
+              root: matches.length === 1 ? path.dirname(matches[0]) : getCommonRoot(matches)
             };
           }
 
