@@ -97,10 +97,11 @@ runs:
             return commonParts.length ? path.join(baseRoot, ...commonParts) : baseRoot;
           }
 
+          const normalizeGlobPath = (value) => value.replace(/\\/g, '/');
           const hasGlobChars = (value) => /[*?[\]{}]/.test(value);
 
           function getGlobSearchRoot(pattern) {
-            const normalized = pattern.replace(/\\/g, '/');
+            const normalized = normalizeGlobPath(pattern);
             const isAbsolutePattern = normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized);
             const staticParts = [];
             for (const [index, segment] of normalized.split('/').entries()) {
@@ -112,40 +113,99 @@ runs:
               staticParts.push(segment);
             }
             if (staticParts.length === 0 || (staticParts.length === 1 && staticParts[0] === '')) {
-              return isAbsolutePattern ? path.parse(path.resolve(pattern)).root : process.cwd();
+              return isAbsolutePattern ? path.parse(path.resolve(normalized)).root : process.cwd();
             }
             return path.resolve(staticParts.join(path.sep));
           }
 
+          function expandBraces(pattern) {
+            const open = pattern.indexOf('{');
+            if (open < 0) return [pattern];
+            const close = pattern.indexOf('}', open + 1);
+            if (close < 0) return [pattern];
+            const variants = pattern.slice(open + 1, close).split(',');
+            if (variants.length < 2) return [pattern];
+            return variants.flatMap((variant) =>
+              expandBraces(`${pattern.slice(0, open)}${variant}${pattern.slice(close + 1)}`)
+            );
+          }
+
+          function toSegmentRegex(segment) {
+            let source = '';
+            for (let i = 0; i < segment.length; i++) {
+              const char = segment[i];
+              if (char === '*') source += '[^/]*';
+              else if (char === '?') source += '[^/]';
+              else if (char === '[') {
+                const close = segment.indexOf(']', i + 1);
+                if (close > i + 1) {
+                  source += segment.slice(i, close + 1);
+                  i = close;
+                } else {
+                  source += '\\[';
+                }
+              } else if (/[$()*+.?[\\\]^{|}]/.test(char)) source += `\\${char}`;
+              else source += char;
+            }
+            return new RegExp(`^${source}$`);
+          }
+
+          function getPatternSegments(pattern, root) {
+            const rel = normalizeGlobPath(path.relative(root, path.resolve(normalizeGlobPath(pattern))));
+            if (rel === '' || rel === '.') return [];
+            if (rel.startsWith('../') || rel === '..') {
+              throw new Error(`Glob pattern '${pattern}' is outside computed search root '${root}'`);
+            }
+            return rel.split('/').filter(Boolean);
+          }
+
+          function inspectPath(target) {
+            try {
+              return fs.lstatSync(target);
+            } catch (error) {
+              throw new Error(`Failed to inspect path '${target}': ${error.message}`);
+            }
+          }
+
+          function readDir(target) {
+            try {
+              return fs.readdirSync(target);
+            } catch (error) {
+              throw new Error(`Failed to read directory '${target}': ${error.message}`);
+            }
+          }
+
           function collectGlobFileMatches(pattern, root, matches = []) {
             if (!fs.existsSync(root)) return matches;
-            let stat;
-            try {
-              stat = fs.lstatSync(root);
-            } catch (error) {
-              throw new Error(`Failed to inspect path '${root}': ${error.message}`);
-            }
-            if (stat.isSymbolicLink()) return matches;
-            if (stat.isFile()) {
-              const rel = path.relative(process.cwd(), root).split(path.sep).join('/');
-              if (
-                path.matchesGlob(root, pattern) ||
-                path.matchesGlob(rel, pattern) ||
-                path.matchesGlob(`./${rel}`, pattern)
-              ) {
-                matches.push(path.resolve(root));
+            const segments = getPatternSegments(pattern, root);
+            const compiled = segments.map((segment) => (
+              segment === '**' ? null : expandBraces(segment).map(toSegmentRegex)
+            ));
+
+            function walk(target, index) {
+              const stat = inspectPath(target);
+              if (stat.isSymbolicLink()) return;
+              if (index === segments.length) {
+                if (stat.isFile()) matches.push(path.resolve(target));
+                return;
               }
-              return matches;
+              if (!stat.isDirectory()) return;
+              const segment = segments[index];
+              const entries = readDir(target);
+              if (segment === '**') {
+                walk(target, index + 1);
+                for (const name of entries) walk(path.join(target, name), index);
+                return;
+              }
+              const matchers = compiled[index];
+              for (const name of entries) {
+                if (matchers.some((re) => re.test(name))) {
+                  walk(path.join(target, name), index + 1);
+                }
+              }
             }
-            let entries;
-            try {
-              entries = fs.readdirSync(root);
-            } catch (error) {
-              throw new Error(`Failed to read directory '${root}': ${error.message}`);
-            }
-            for (const name of entries) {
-              collectGlobFileMatches(pattern, path.join(root, name), matches);
-            }
+
+            walk(root, 0);
             return matches;
           }
 
@@ -159,11 +219,8 @@ runs:
               };
             }
 
-            if (typeof path.matchesGlob !== 'function') {
-              throw new Error('Glob pattern support requires Node.js 22+ (path.matchesGlob)');
-            }
             const searchRoot = getGlobSearchRoot(targetPattern);
-            const matches = collectGlobFileMatches(targetPattern, searchRoot);
+            const matches = [...new Set(collectGlobFileMatches(targetPattern, searchRoot))];
             if (matches.length === 0) {
               if (!fs.existsSync(searchRoot)) {
                 throw new Error(`Glob search root '${searchRoot}' does not exist for pattern '${targetPattern}'`);
