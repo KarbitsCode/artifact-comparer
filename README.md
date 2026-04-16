@@ -21,5 +21,5 @@ The action outputs:
 
 Implementation notes:
 - the downloaded base artifact directory is automatically cleaned up at the end of the composite action (`if: always()` cleanup step)
-- comparer logic runs inline via `actions/github-script@v8.0.0` (no action-local npm install step; relies on github-script runtime dependencies such as `@actions/glob`)
+- comparer logic runs inline via `actions/github-script@v8.0.0` (no action-local npm install/runtime dependencies)
 - downloading artifacts requires a token with workflow permission `actions: read` (for example `permissions: { actions: read }`); by default this uses `GITHUB_TOKEN`, but you can pass a different token via the `github-token` input if the default token is too restricted
