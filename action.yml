@@ -79,17 +79,18 @@ runs:
             if (paths.length === 0) return process.cwd();
             const resolved = paths.map((targetPath) => path.resolve(targetPath));
             const firstRoot = path.parse(resolved[0]).root;
+            const baseRoot = firstRoot || path.parse(process.cwd()).root || process.cwd();
             if (resolved.some((targetPath) => path.parse(targetPath).root !== firstRoot)) {
               throw new Error('Glob matches span different root directories; use a narrower pattern');
             }
-            const commonParts = resolved
-              .map((targetPath) => targetPath.slice(firstRoot.length).split(path.sep).filter(Boolean))
-              .reduce((prefix, parts) => {
+            const [firstParts, ...restParts] = resolved
+              .map((targetPath) => targetPath.slice(firstRoot.length).split(path.sep).filter(Boolean));
+            const commonParts = restParts.reduce((prefix, parts) => {
                 let i = 0;
                 while (i < prefix.length && i < parts.length && prefix[i] === parts[i]) i++;
                 return prefix.slice(0, i);
-              });
-            return commonParts.length ? path.join(firstRoot, ...commonParts) : firstRoot || process.cwd();
+              }, firstParts);
+            return commonParts.length ? path.join(baseRoot, ...commonParts) : baseRoot;
           }
 
           async function resolveHeadTargets(targetPattern) {
