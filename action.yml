@@ -78,7 +78,6 @@ runs:
           function getCommonRoot(paths) {
             if (paths.length === 0) return process.cwd();
             const resolved = paths.map((targetPath) => path.resolve(targetPath));
-            if (resolved.length === 0) return process.cwd();
             const baseRoot = path.parse(resolved[0]).root || path.parse(process.cwd()).root;
             if (resolved.some((targetPath) => path.parse(targetPath).root !== baseRoot)) {
               throw new Error('Glob matches span different root directories; use a narrower pattern');
@@ -192,6 +191,7 @@ runs:
             head: { sizeBytes: result.headSize },
             diff: { bytes: result.diff }
           };
+          core.setOutput('comparison-result', JSON.stringify(json));
           console.log('Result:', JSON.stringify(json));
 
     - name: Cleanup base artifact directory
