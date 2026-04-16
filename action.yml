@@ -80,8 +80,8 @@ runs:
             const parsed = paths.map((targetPath) => {
               const abs = path.resolve(targetPath);
               const root = path.parse(abs).root;
-              const rel = abs.slice(root.length);
-              return { root, parts: rel.split(path.sep).filter(Boolean) };
+              const pathWithoutRoot = abs.slice(root.length);
+              return { root, parts: pathWithoutRoot.split(path.sep).filter(Boolean) };
             });
             const firstRoot = parsed[0].root;
             if (parsed.some((entry) => entry.root !== firstRoot)) {
@@ -89,11 +89,11 @@ runs:
             }
             let prefixLen = parsed[0].parts.length;
             for (const entry of parsed.slice(1)) {
-              let i = 0;
-              while (i < prefixLen && entry.parts[i] === parsed[0].parts[i]) {
-                i += 1;
+              let matchingSegments = 0;
+              while (matchingSegments < prefixLen && entry.parts[matchingSegments] === parsed[0].parts[matchingSegments]) {
+                matchingSegments += 1;
               }
-              prefixLen = i;
+              prefixLen = matchingSegments;
             }
             return prefixLen === 0
               ? firstRoot || process.cwd()
@@ -115,7 +115,7 @@ runs:
               implicitDescendants: false,
               omitBrokenSymbolicLinks: true
             });
-            const matches = Array.from(new Set((await globber.glob()).map((p) => path.resolve(p))));
+            const matches = Array.from(new Set((await globber.glob()).map((matchedPath) => path.resolve(matchedPath))));
             if (matches.length === 0) {
               throw new Error(`Head artifact path or glob '${targetPattern}' matched no files`);
             }
