@@ -85,9 +85,13 @@ runs:
             const [firstParts, ...restParts] = resolved
               .map((targetPath) => targetPath.slice(baseRoot.length).split(path.sep).filter(Boolean));
             const commonParts = restParts.reduce((prefix, parts) => {
-              let i = 0;
-              while (i < prefix.length && i < parts.length && prefix[i] === parts[i]) i++;
-              return prefix.slice(0, i);
+              let matchingSegments = 0;
+              while (
+                matchingSegments < prefix.length &&
+                matchingSegments < parts.length &&
+                prefix[matchingSegments] === parts[matchingSegments]
+              ) matchingSegments++;
+              return prefix.slice(0, matchingSegments);
             }, firstParts);
             return commonParts.length ? path.join(baseRoot, ...commonParts) : baseRoot;
           }
