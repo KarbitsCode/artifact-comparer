@@ -77,31 +77,19 @@ runs:
 
           function getCommonRoot(paths) {
             if (paths.length === 0) return process.cwd();
-            const parsed = paths.map((targetPath) => {
-              const abs = path.resolve(targetPath);
-              const root = path.parse(abs).root;
-              const pathWithoutRoot = abs.slice(root.length);
-              return { root, parts: pathWithoutRoot.split(path.sep).filter(Boolean) };
-            });
-            const firstRoot = parsed[0].root;
-            if (parsed.some((entry) => entry.root !== firstRoot)) {
+            const resolved = paths.map((targetPath) => path.resolve(targetPath));
+            const firstRoot = path.parse(resolved[0]).root;
+            if (resolved.some((targetPath) => path.parse(targetPath).root !== firstRoot)) {
               throw new Error('Glob matches span different root directories; use a narrower pattern');
             }
-            let prefixLen = parsed[0].parts.length;
-            for (const entry of parsed.slice(1)) {
-              let matchingSegments = 0;
-              while (
-                matchingSegments < prefixLen &&
-                matchingSegments < entry.parts.length &&
-                entry.parts[matchingSegments] === parsed[0].parts[matchingSegments]
-              ) {
-                matchingSegments += 1;
-              }
-              prefixLen = matchingSegments;
-            }
-            return prefixLen === 0
-              ? firstRoot || process.cwd()
-              : path.join(firstRoot, ...parsed[0].parts.slice(0, prefixLen));
+            const commonParts = resolved
+              .map((targetPath) => targetPath.slice(firstRoot.length).split(path.sep).filter(Boolean))
+              .reduce((prefix, parts) => {
+                let i = 0;
+                while (i < prefix.length && i < parts.length && prefix[i] === parts[i]) i++;
+                return prefix.slice(0, i);
+              });
+            return commonParts.length ? path.join(firstRoot, ...commonParts) : firstRoot || process.cwd();
           }
 
           async function resolveHeadTargets(targetPattern) {
@@ -129,16 +117,6 @@ runs:
             };
           }
 
-          function collectStats(targets, base) {
-            const sizes = {};
-            let total = 0;
-            for (const target of targets) {
-              const nested = getStats(target, base, sizes);
-              total += nested.total;
-            }
-            return { total, sizes };
-          }
-          
           function formatDelta(before, after) {
             if (before !== undefined && after !== undefined) {
               const diff = after - before;
@@ -161,7 +139,11 @@ runs:
           
           function compare(baseDir, headTargets, headBase) {
             const base = getStats(baseDir);
-            const head = collectStats(headTargets, headBase);
+            const head = headTargets.reduce((acc, target) => {
+              const nested = getStats(target, headBase, acc.sizes);
+              acc.total += nested.total;
+              return acc;
+            }, { total: 0, sizes: {} });
             const allFiles = [...new Set([
               ...Object.keys(base.sizes),
               ...Object.keys(head.sizes)
