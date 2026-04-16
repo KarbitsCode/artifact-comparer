@@ -85,7 +85,7 @@ runs:
             });
             const firstRoot = parsed[0].root;
             if (parsed.some((entry) => entry.root !== firstRoot)) {
-              return firstRoot || process.cwd();
+              throw new Error('Glob matches span multiple filesystem roots; use a narrower pattern');
             }
             let prefixLen = parsed[0].parts.length;
             for (const entry of parsed.slice(1)) {
@@ -115,7 +115,7 @@ runs:
               implicitDescendants: false,
               omitBrokenSymbolicLinks: true
             });
-            const matches = Array.from(new Set((await globber.glob()).map((matchedPath) => path.resolve(matchedPath))));
+            const matches = (await globber.glob()).map((matchedPath) => path.resolve(matchedPath));
             if (matches.length === 0) {
               throw new Error(`Head artifact path or glob '${targetPattern}' matched no files`);
             }
