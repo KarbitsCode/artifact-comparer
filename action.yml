@@ -85,12 +85,16 @@ runs:
             });
             const firstRoot = parsed[0].root;
             if (parsed.some((entry) => entry.root !== firstRoot)) {
-              throw new Error('Glob matches span multiple filesystem roots; use a narrower pattern');
+              throw new Error('Glob matches span different root directories; use a narrower pattern');
             }
             let prefixLen = parsed[0].parts.length;
             for (const entry of parsed.slice(1)) {
               let matchingSegments = 0;
-              while (matchingSegments < prefixLen && entry.parts[matchingSegments] === parsed[0].parts[matchingSegments]) {
+              while (
+                matchingSegments < prefixLen &&
+                matchingSegments < entry.parts.length &&
+                entry.parts[matchingSegments] === parsed[0].parts[matchingSegments]
+              ) {
                 matchingSegments += 1;
               }
               prefixLen = matchingSegments;
