@@ -117,9 +117,14 @@ runs:
             return path.resolve(staticParts.join(path.sep));
           }
 
-          function collectGlobFileMatches(pattern, root = getGlobSearchRoot(pattern), matches = []) {
+          function collectGlobFileMatches(pattern, root, matches = []) {
             if (!fs.existsSync(root)) return matches;
-            const stat = fs.lstatSync(root);
+            let stat;
+            try {
+              stat = fs.lstatSync(root);
+            } catch (error) {
+              throw new Error(`Failed to inspect path '${root}': ${error.message}`);
+            }
             if (stat.isSymbolicLink()) return matches;
             if (stat.isFile()) {
               const rel = path.relative(process.cwd(), root).split(path.sep).join('/');
@@ -132,7 +137,13 @@ runs:
               }
               return matches;
             }
-            for (const name of fs.readdirSync(root)) {
+            let entries;
+            try {
+              entries = fs.readdirSync(root);
+            } catch (error) {
+              throw new Error(`Failed to read directory '${root}': ${error.message}`);
+            }
+            for (const name of entries) {
               collectGlobFileMatches(pattern, path.join(root, name), matches);
             }
             return matches;
@@ -149,15 +160,19 @@ runs:
             }
 
             if (typeof path.matchesGlob !== 'function') {
-              throw new Error('Glob pattern support requires path.matchesGlob in the Node runtime');
+              throw new Error('Glob pattern support requires Node.js 22+ (path.matchesGlob)');
             }
-            const matches = collectGlobFileMatches(targetPattern);
+            const searchRoot = getGlobSearchRoot(targetPattern);
+            const matches = collectGlobFileMatches(targetPattern, searchRoot);
             if (matches.length === 0) {
+              if (!fs.existsSync(searchRoot)) {
+                throw new Error(`Glob search root '${searchRoot}' does not exist for pattern '${targetPattern}'`);
+              }
               throw new Error(`Head artifact path or glob '${targetPattern}' matched no files`);
             }
             return {
               targets: matches,
-              root: matches.length === 1 ? path.dirname(matches[0]) : getCommonRoot(matches)
+              root: getCommonRoot(matches)
             };
           }
 
