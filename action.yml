@@ -79,17 +79,17 @@ runs:
             if (paths.length === 0) return process.cwd();
             const resolved = paths.map((targetPath) => path.resolve(targetPath));
             const firstRoot = path.parse(resolved[0]).root;
-            const baseRoot = firstRoot || path.parse(process.cwd()).root || process.cwd();
+            const baseRoot = firstRoot || path.parse(process.cwd()).root;
             if (resolved.some((targetPath) => path.parse(targetPath).root !== firstRoot)) {
               throw new Error('Glob matches span different root directories; use a narrower pattern');
             }
             const [firstParts, ...restParts] = resolved
               .map((targetPath) => targetPath.slice(firstRoot.length).split(path.sep).filter(Boolean));
             const commonParts = restParts.reduce((prefix, parts) => {
-                let i = 0;
-                while (i < prefix.length && i < parts.length && prefix[i] === parts[i]) i++;
-                return prefix.slice(0, i);
-              }, firstParts);
+              let i = 0;
+              while (i < prefix.length && i < parts.length && prefix[i] === parts[i]) i++;
+              return prefix.slice(0, i);
+            }, firstParts);
             return commonParts.length ? path.join(baseRoot, ...commonParts) : baseRoot;
           }
 
