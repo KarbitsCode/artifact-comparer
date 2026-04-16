@@ -6,7 +6,7 @@ inputs:
     description: 'Name of the base artifact to compare against'
     required: true
   path:
-    description: 'File or directory path of the new/head artifact already available in the workspace'
+    description: 'File, directory, or glob pattern for the new/head artifact already available in the workspace'
     required: true
   github-token:
     description: 'GitHub token used to download the base artifact from previous workflow runs'
@@ -51,6 +51,7 @@ runs:
         script: |
           const fs = require('fs');
           const path = require('path');
+          const glob = require('@actions/glob');
 
           function getStats(target, base = target, sizes = {}) {
             let total = 0;
@@ -70,6 +71,66 @@ runs:
                   }
                 }
               }
+            }
+            return { total, sizes };
+          }
+
+          function getCommonRoot(paths) {
+            if (paths.length === 0) return process.cwd();
+            const parsed = paths.map((targetPath) => {
+              const abs = path.resolve(targetPath);
+              const root = path.parse(abs).root;
+              const rel = abs.slice(root.length);
+              return { root, parts: rel.split(path.sep).filter(Boolean) };
+            });
+            const firstRoot = parsed[0].root;
+            if (parsed.some((entry) => entry.root !== firstRoot)) {
+              return firstRoot || process.cwd();
+            }
+            let prefixLen = parsed[0].parts.length;
+            for (const entry of parsed.slice(1)) {
+              let i = 0;
+              while (i < prefixLen && entry.parts[i] === parsed[0].parts[i]) {
+                i += 1;
+              }
+              prefixLen = i;
+            }
+            return prefixLen === 0
+              ? firstRoot || process.cwd()
+              : path.join(firstRoot, ...parsed[0].parts.slice(0, prefixLen));
+          }
+
+          async function resolveHeadTargets(targetPattern) {
+            if (fs.existsSync(targetPattern)) {
+              const resolved = path.resolve(targetPattern);
+              const stat = fs.lstatSync(resolved);
+              return {
+                targets: [resolved],
+                root: stat.isFile() ? path.dirname(resolved) : resolved
+              };
+            }
+
+            const globber = await glob.create(targetPattern, {
+              followSymbolicLinks: false,
+              implicitDescendants: false,
+              omitBrokenSymbolicLinks: true
+            });
+            const matches = Array.from(new Set((await globber.glob()).map((p) => path.resolve(p))));
+            if (matches.length === 0) {
+              throw new Error(`Head artifact path or glob '${targetPattern}' matched no files`);
+            }
+            return {
+              targets: matches,
+              root: getCommonRoot(matches)
+            };
+          }
+
+          function collectStats(targets, base) {
+            const sizes = {};
+            let total = 0;
+            for (const target of targets) {
+              const nested = getStats(target, base, sizes);
+              total += nested.total;
             }
             return { total, sizes };
           }
@@ -94,9 +155,9 @@ runs:
             return md;
           }
           
-          function compare(baseDir, headDir) {
+          function compare(baseDir, headTargets, headBase) {
             const base = getStats(baseDir);
-            const head = getStats(headDir);
+            const head = collectStats(headTargets, headBase);
             const allFiles = [...new Set([
               ...Object.keys(base.sizes),
               ...Object.keys(head.sizes)
@@ -126,10 +187,8 @@ runs:
           if (!baseArtifactPath || !headArtifactPath) {
             throw new Error('BASE_ARTIFACT_PATH and HEAD_ARTIFACT_PATH must be set');
           }
-          if (!fs.existsSync(headArtifactPath)) {
-            throw new Error(`Head artifact path '${headArtifactPath}' not found`);
-          }
-          const result = compare(baseArtifactPath, headArtifactPath);
+          const head = await resolveHeadTargets(headArtifactPath);
+          const result = compare(baseArtifactPath, head.targets, head.root);
           const markdown = buildMarkdown(result.rows);
           console.log(markdown);
           if (process.env.GITHUB_STEP_SUMMARY) {
