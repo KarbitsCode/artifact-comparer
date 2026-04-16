@@ -144,10 +144,17 @@ runs:
                 } else {
                   source += '\\[';
                 }
-              } else if (/[$()*+.?[\\\]^{|}]/.test(char)) source += `\\${char}`;
+              } else if (/[\^$.*+?()[\]{}|\\]/.test(char)) source += `\\${char}`;
               else source += char;
             }
             return new RegExp(`^${source}$`);
+          }
+
+          function compactGlobSegments(segments) {
+            return segments.reduce((acc, segment) => {
+              if (segment !== '**' || acc[acc.length - 1] !== '**') acc.push(segment);
+              return acc;
+            }, []);
           }
 
           function getPatternSegments(pattern, root) {
@@ -177,7 +184,7 @@ runs:
 
           function collectGlobFileMatches(pattern, root, matches = []) {
             if (!fs.existsSync(root)) return matches;
-            const segments = getPatternSegments(pattern, root);
+            const segments = compactGlobSegments(getPatternSegments(pattern, root));
             const compiled = segments.map((segment) => (
               segment === '**' ? null : expandBraces(segment).map(toSegmentRegex)
             ));
@@ -220,6 +227,7 @@ runs:
             }
 
             const searchRoot = getGlobSearchRoot(targetPattern);
+            // Patterns with repeated `**` segments can reach the same file through multiple recursion paths.
             const matches = [...new Set(collectGlobFileMatches(targetPattern, searchRoot))];
             if (matches.length === 0) {
               if (!fs.existsSync(searchRoot)) {
