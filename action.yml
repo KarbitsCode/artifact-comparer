@@ -78,13 +78,12 @@ runs:
           function getCommonRoot(paths) {
             if (paths.length === 0) return process.cwd();
             const resolved = paths.map((targetPath) => path.resolve(targetPath));
-            const firstRoot = path.parse(resolved[0]).root;
-            const baseRoot = firstRoot || path.parse(process.cwd()).root;
-            if (resolved.some((targetPath) => path.parse(targetPath).root !== firstRoot)) {
+            const baseRoot = path.parse(resolved[0]).root || path.parse(process.cwd()).root;
+            if (resolved.some((targetPath) => path.parse(targetPath).root !== baseRoot)) {
               throw new Error('Glob matches span different root directories; use a narrower pattern');
             }
             const [firstParts, ...restParts] = resolved
-              .map((targetPath) => targetPath.slice(firstRoot.length).split(path.sep).filter(Boolean));
+              .map((targetPath) => targetPath.slice(baseRoot.length).split(path.sep).filter(Boolean));
             const commonParts = restParts.reduce((prefix, parts) => {
               let i = 0;
               while (i < prefix.length && i < parts.length && prefix[i] === parts[i]) i++;
