@@ -81,6 +81,14 @@ runs:
             if (resolved.some((targetPath) => path.parse(targetPath).root !== baseRoot)) {
               throw new Error('Glob matches span different root directories; use a narrower pattern');
             }
+            if (resolved.length === 1) {
+              const onlyPath = resolved[0];
+              if (fs.existsSync(onlyPath)) {
+                const stat = fs.lstatSync(onlyPath);
+                return stat.isDirectory() ? onlyPath : path.dirname(onlyPath);
+              }
+              return path.dirname(onlyPath);
+            }
             const [firstParts, ...restParts] = resolved
               .map((targetPath) => targetPath.slice(baseRoot.length).split(path.sep).filter(Boolean));
             const commonParts = restParts.reduce((prefix, parts) => {
