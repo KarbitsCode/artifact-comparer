@@ -119,12 +119,12 @@ runs:
             return path.resolve(staticParts.join(path.sep));
           }
 
-          const escapeRegex = (value) => value.replace(/[|\\{}()[\]^$+?.]/g, '\\$&');
+          const escapeRegex = (value) => value.replace(/[|\\()^$+.]/g, '\\$&');
 
           function toSegmentRegex(segment) {
             const source = segment
               .split('*')
-              .map((part) => escapeRegex(part).replace(/\\\?/g, '[^/]'))
+              .map((part) => escapeRegex(part).replace(/\?/g, '[^/]'))
               .join('[^/]*');
             return new RegExp(`^${source}$`);
           }
@@ -211,7 +211,7 @@ runs:
             }
 
             const searchRoot = getGlobSearchRoot(targetPattern);
-            const matches = collectGlobFileMatches(targetPattern, searchRoot);
+            const matches = [...new Set(collectGlobFileMatches(targetPattern, searchRoot))];
             if (matches.length === 0) {
               if (!fs.existsSync(searchRoot)) {
                 throw new Error(`Glob search root '${searchRoot}' does not exist for pattern '${targetPattern}'`);
