@@ -122,6 +122,9 @@ runs:
 
           function collectGlobFileMatches(pattern, root, matches = []) {
             if (!fs.existsSync(root)) return matches;
+            if (!hasMatchesGlob) {
+              throw new Error("Glob patterns require a runtime that supports path.matchesGlob()");
+            }
             const normalizedPattern = normalizeGlobPath(path.resolve(normalizeGlobPath(pattern)));
 
             function walk(target) {
@@ -164,13 +167,13 @@ runs:
             if (!hasGlobChars(targetPattern)) {
               throw new Error(`Head artifact path '${targetPattern}' not found`);
             }
+            if (!hasMatchesGlob) {
+              throw new Error("Glob patterns require a runtime that supports path.matchesGlob()");
+            }
             if (hasUnsupportedGlobChars(targetPattern)) {
               throw new Error(
                 `Unsupported glob pattern '${targetPattern}'. Only '*', '?', and '**' are supported.`
               );
-            }
-            if (!hasMatchesGlob) {
-              throw new Error("Glob patterns require a runtime that supports path.matchesGlob()");
             }
 
             const searchRoot = getGlobSearchRoot(targetPattern);
