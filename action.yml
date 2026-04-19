@@ -100,6 +100,7 @@ runs:
           const normalizeGlobPath = (value) => value.replace(/\\/g, '/');
           const hasGlobChars = (value) => /[*?]/.test(value);
           const hasUnsupportedGlobChars = (value) => /[\[\]{}]/.test(value);
+          const hasMatchesGlob = typeof path.matchesGlob === 'function';
 
           function getGlobSearchRoot(pattern) {
             const normalized = normalizeGlobPath(pattern);
@@ -119,36 +120,11 @@ runs:
             return path.resolve(staticParts.join(path.sep));
           }
 
-          const escapeRegex = (value) => value.replace(/[|\\{}()^$+.]/g, '\\$&');
-
-          function toSegmentRegex(segment) {
-            const source = segment
-              .split('*')
-              .map((part) => escapeRegex(part).replace(/\?/g, '[^/]'))
-              .join('[^/]*');
-            return new RegExp(`^${source}$`);
-          }
-
-          function getPatternSegments(pattern, root) {
-            const rel = normalizeGlobPath(path.relative(root, path.resolve(normalizeGlobPath(pattern))));
-            if (rel === '' || rel === '.') return [];
-            if (rel.startsWith('../') || rel === '..') {
-              throw new Error(`Glob pattern '${pattern}' is outside computed search root '${root}'`);
-            }
-            return rel.split('/').filter(Boolean);
-          }
-
           function collectGlobFileMatches(pattern, root, matches = []) {
             if (!fs.existsSync(root)) return matches;
-            const segments = getPatternSegments(pattern, root).reduce((acc, segment) => {
-              if (segment !== '**' || acc[acc.length - 1] !== '**') acc.push(segment);
-              return acc;
-            }, []);
-            const compiled = segments.map((segment) => (
-              segment === '**' ? null : toSegmentRegex(segment)
-            ));
+            const normalizedPattern = normalizeGlobPath(path.resolve(normalizeGlobPath(pattern)));
 
-            function walk(target, index) {
+            function walk(target) {
               let stat;
               try {
                 stat = fs.lstatSync(target);
@@ -156,32 +132,23 @@ runs:
                 throw new Error(`Failed to inspect path '${target}': ${error.message}`);
               }
               if (stat.isSymbolicLink()) return;
-              if (index === segments.length) {
-                if (stat.isFile()) matches.push(path.resolve(target));
+              if (stat.isFile()) {
+                if (path.matchesGlob(normalizeGlobPath(path.resolve(target)), normalizedPattern)) {
+                  matches.push(path.resolve(target));
+                }
                 return;
               }
               if (!stat.isDirectory()) return;
-              const segment = segments[index];
               let entries;
               try {
                 entries = fs.readdirSync(target);
               } catch (error) {
                 throw new Error(`Failed to read directory '${target}': ${error.message}`);
               }
-              if (segment === '**') {
-                walk(target, index + 1);
-                for (const name of entries) walk(path.join(target, name), index);
-                return;
-              }
-              const matcher = compiled[index];
-              for (const name of entries) {
-                if (matcher.test(name)) {
-                  walk(path.join(target, name), index + 1);
-                }
-              }
+              for (const name of entries) walk(path.join(target, name));
             }
 
-            walk(root, 0);
+            walk(root);
             return matches;
           }
 
@@ -194,10 +161,16 @@ runs:
                 root: stat.isFile() ? path.dirname(resolved) : resolved
               };
             }
+            if (!hasGlobChars(targetPattern)) {
+              throw new Error(`Head artifact path '${targetPattern}' not found`);
+            }
             if (hasUnsupportedGlobChars(targetPattern)) {
               throw new Error(
                 `Unsupported glob pattern '${targetPattern}'. Only '*', '?', and '**' are supported.`
               );
+            }
+            if (!hasMatchesGlob) {
+              throw new Error("Glob patterns require a runtime that supports path.matchesGlob()");
             }
 
             const searchRoot = getGlobSearchRoot(targetPattern);
