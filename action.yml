@@ -119,7 +119,7 @@ runs:
             return path.resolve(staticParts.join(path.sep));
           }
 
-          const escapeRegex = (value) => value.replace(/[|\\{}()[\]^$+.]/g, '\\$&');
+          const escapeRegex = (value) => value.replace(/[|\\{}()^$+.]/g, '\\$&');
 
           function toSegmentRegex(segment) {
             const source = segment
@@ -211,6 +211,7 @@ runs:
             }
 
             const searchRoot = getGlobSearchRoot(targetPattern);
+            // Deduplicate defensively in case recursive wildcard expansion reaches the same file more than once.
             const matches = [...new Set(collectGlobFileMatches(targetPattern, searchRoot))];
             if (matches.length === 0) {
               if (!fs.existsSync(searchRoot)) {
