@@ -6,7 +6,7 @@ inputs:
     description: 'Name of the base artifact to compare against'
     required: true
   path:
-    description: 'File or directory path of the new/head artifact already available in the workspace'
+    description: 'File, directory, or simple glob pattern (`*`, `?`, `**`) for the new/head artifact already available in the workspace'
     required: true
   github-token:
     description: 'GitHub token used to download the base artifact from previous workflow runs'
@@ -73,7 +73,132 @@ runs:
             }
             return { total, sizes };
           }
-          
+
+          function getCommonRoot(paths) {
+            if (paths.length === 0) return process.cwd();
+            const resolved = paths.map((targetPath) => path.resolve(targetPath));
+            const baseRoot = path.parse(resolved[0]).root || path.parse(process.cwd()).root;
+            if (resolved.some((targetPath) => path.parse(targetPath).root !== baseRoot)) {
+              throw new Error('Glob matches span different root directories; use a narrower pattern');
+            }
+            if (resolved.length === 1) {
+              const onlyPath = resolved[0];
+              if (fs.existsSync(onlyPath)) {
+                const stat = fs.lstatSync(onlyPath);
+                return stat.isDirectory() ? onlyPath : path.dirname(onlyPath);
+              }
+              return path.dirname(onlyPath);
+            }
+            const [firstParts, ...restParts] = resolved
+              .map((targetPath) => targetPath.slice(baseRoot.length).split(path.sep).filter(Boolean));
+            const commonParts = restParts.reduce((prefix, parts) => {
+              let matchingSegments = 0;
+              while (
+                matchingSegments < prefix.length &&
+                matchingSegments < parts.length &&
+                prefix[matchingSegments] === parts[matchingSegments]
+              ) {
+                matchingSegments++;
+              }
+              return prefix.slice(0, matchingSegments);
+            }, firstParts);
+            return commonParts.length ? path.join(baseRoot, ...commonParts) : baseRoot;
+          }
+
+          const normalizeGlobPath = (value) => value.replace(/\\/g, '/');
+          const hasGlobChars = (value) => /[*?]/.test(value);
+          const hasUnsupportedGlobChars = (value) => /[\[\]{}]/.test(value);
+          const hasMatchesGlob = typeof path.matchesGlob === 'function';
+
+          function getGlobSearchRoot(pattern) {
+            const normalized = normalizeGlobPath(pattern);
+            const isAbsolutePattern = normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized);
+            const staticParts = [];
+            for (const [index, segment] of normalized.split('/').entries()) {
+              if (segment === '' && index === 0) {
+                staticParts.push(segment);
+                continue;
+              }
+              if (hasGlobChars(segment)) break;
+              staticParts.push(segment);
+            }
+            if (staticParts.length === 0 || (staticParts.length === 1 && staticParts[0] === '')) {
+              return isAbsolutePattern ? path.parse(path.resolve(normalized)).root : process.cwd();
+            }
+            return path.resolve(staticParts.join(path.sep));
+          }
+
+          function collectGlobFileMatches(pattern, root, matches = []) {
+            if (!fs.existsSync(root)) return matches;
+            if (!hasMatchesGlob) {
+              throw new Error("Glob patterns require a runtime that supports path.matchesGlob()");
+            }
+            const normalizedPattern = normalizeGlobPath(path.resolve(normalizeGlobPath(pattern)));
+
+            function walk(target) {
+              let stat;
+              try {
+                stat = fs.lstatSync(target);
+              } catch (error) {
+                throw new Error(`Failed to inspect path '${target}': ${error.message}`);
+              }
+              if (stat.isSymbolicLink()) return;
+              if (stat.isFile()) {
+                if (path.matchesGlob(normalizeGlobPath(path.resolve(target)), normalizedPattern)) {
+                  matches.push(path.resolve(target));
+                }
+                return;
+              }
+              if (!stat.isDirectory()) return;
+              let entries;
+              try {
+                entries = fs.readdirSync(target);
+              } catch (error) {
+                throw new Error(`Failed to read directory '${target}': ${error.message}`);
+              }
+              for (const name of entries) walk(path.join(target, name));
+            }
+
+            walk(root);
+            return matches;
+          }
+
+          async function resolveHeadTargets(targetPattern) {
+            if (fs.existsSync(targetPattern)) {
+              const resolved = path.resolve(targetPattern);
+              const stat = fs.lstatSync(resolved);
+              return {
+                targets: [resolved],
+                root: stat.isFile() ? path.dirname(resolved) : resolved
+              };
+            }
+            if (!hasGlobChars(targetPattern)) {
+              throw new Error(`Head artifact path '${targetPattern}' not found`);
+            }
+            if (!hasMatchesGlob) {
+              throw new Error("Glob patterns require a runtime that supports path.matchesGlob()");
+            }
+            if (hasUnsupportedGlobChars(targetPattern)) {
+              throw new Error(
+                `Unsupported glob pattern '${targetPattern}'. Only '*', '?', and '**' are supported.`
+              );
+            }
+
+            const searchRoot = getGlobSearchRoot(targetPattern);
+            // Deduplicate defensively in case recursive wildcard expansion reaches the same file more than once.
+            const matches = [...new Set(collectGlobFileMatches(targetPattern, searchRoot))];
+            if (matches.length === 0) {
+              if (!fs.existsSync(searchRoot)) {
+                throw new Error(`Glob search root '${searchRoot}' does not exist for pattern '${targetPattern}'`);
+              }
+              throw new Error(`Head artifact path or glob '${targetPattern}' matched no files`);
+            }
+            return {
+              targets: matches,
+              root: getCommonRoot(matches)
+            };
+          }
+
           function formatDelta(before, after) {
             if (before !== undefined && after !== undefined) {
               const diff = after - before;
@@ -94,9 +219,13 @@ runs:
             return md;
           }
           
-          function compare(baseDir, headDir) {
+          function compare(baseDir, headTargets, headBase) {
             const base = getStats(baseDir);
-            const head = getStats(headDir);
+            const head = headTargets.reduce((acc, target) => {
+              const nested = getStats(target, headBase, acc.sizes);
+              acc.total += nested.total;
+              return acc;
+            }, { total: 0, sizes: {} });
             const allFiles = [...new Set([
               ...Object.keys(base.sizes),
               ...Object.keys(head.sizes)
@@ -126,10 +255,8 @@ runs:
           if (!baseArtifactPath || !headArtifactPath) {
             throw new Error('BASE_ARTIFACT_PATH and HEAD_ARTIFACT_PATH must be set');
           }
-          if (!fs.existsSync(headArtifactPath)) {
-            throw new Error(`Head artifact path '${headArtifactPath}' not found`);
-          }
-          const result = compare(baseArtifactPath, headArtifactPath);
+          const head = await resolveHeadTargets(headArtifactPath);
+          const result = compare(baseArtifactPath, head.targets, head.root);
           const markdown = buildMarkdown(result.rows);
           console.log(markdown);
           if (process.env.GITHUB_STEP_SUMMARY) {
@@ -140,6 +267,7 @@ runs:
             head: { sizeBytes: result.headSize },
             diff: { bytes: result.diff }
           };
+          core.setOutput('comparison-result', JSON.stringify(json));
           console.log('Result:', JSON.stringify(json));
 
     - name: Cleanup base artifact directory
