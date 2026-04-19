@@ -3,7 +3,7 @@ Composite GitHub Action to compare artifact file sizes
 
 This action is a reusable combination of:
 1. Downloading the previous/base artifact (via `dawidd6/action-download-artifact@v19`)
-2. Comparing it against your current build output path (file, directory, or glob pattern) and writing a markdown report
+2. Comparing it against your current build output path (file, directory, or simple glob pattern: `*`, `?`, `**`) and writing a markdown report
 
 Example usage:
 

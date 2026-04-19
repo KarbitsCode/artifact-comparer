@@ -6,7 +6,7 @@ inputs:
     description: 'Name of the base artifact to compare against'
     required: true
   path:
-    description: 'File, directory, or glob pattern for the new/head artifact already available in the workspace'
+    description: 'File, directory, or simple glob pattern (`*`, `?`, `**`) for the new/head artifact already available in the workspace'
     required: true
   github-token:
     description: 'GitHub token used to download the base artifact from previous workflow runs'
@@ -98,7 +98,8 @@ runs:
           }
 
           const normalizeGlobPath = (value) => value.replace(/\\/g, '/');
-          const hasGlobChars = (value) => /[*?[\]{}]/.test(value);
+          const hasGlobChars = (value) => /[*?]/.test(value);
+          const hasUnsupportedGlobChars = (value) => /[\[\]{}]/.test(value);
 
           function getGlobSearchRoot(pattern) {
             const normalized = normalizeGlobPath(pattern);
@@ -118,35 +119,13 @@ runs:
             return path.resolve(staticParts.join(path.sep));
           }
 
-          function expandBraces(pattern) {
-            const open = pattern.indexOf('{');
-            if (open < 0) return [pattern];
-            const close = pattern.indexOf('}', open + 1);
-            if (close < 0) return [pattern];
-            const variants = pattern.slice(open + 1, close).split(',');
-            if (variants.length < 2) return [pattern];
-            return variants.flatMap((variant) =>
-              expandBraces(`${pattern.slice(0, open)}${variant}${pattern.slice(close + 1)}`)
-            );
-          }
+          const escapeRegex = (value) => value.replace(/[|\\{}()[\]^$+?.]/g, '\\$&');
 
           function toSegmentRegex(segment) {
-            let source = '';
-            for (let i = 0; i < segment.length; i++) {
-              const char = segment[i];
-              if (char === '*') source += '[^/]*';
-              else if (char === '?') source += '[^/]';
-              else if (char === '[') {
-                const close = segment.indexOf(']', i + 1);
-                if (close > i + 1) {
-                  source += segment.slice(i, close + 1);
-                  i = close;
-                } else {
-                  source += '\\[';
-                }
-              } else if (/[\^$.*+?()[\]{}|\\]/.test(char)) source += `\\${char}`;
-              else source += char;
-            }
+            const source = segment
+              .split('*')
+              .map((part) => escapeRegex(part).replace(/\\\?/g, '[^/]'))
+              .join('[^/]*');
             return new RegExp(`^${source}$`);
           }
 
@@ -186,7 +165,7 @@ runs:
             if (!fs.existsSync(root)) return matches;
             const segments = compactGlobSegments(getPatternSegments(pattern, root));
             const compiled = segments.map((segment) => (
-              segment === '**' ? null : expandBraces(segment).map(toSegmentRegex)
+              segment === '**' ? null : toSegmentRegex(segment)
             ));
 
             function walk(target, index) {
@@ -204,9 +183,9 @@ runs:
                 for (const name of entries) walk(path.join(target, name), index);
                 return;
               }
-              const matchers = compiled[index];
+              const matcher = compiled[index];
               for (const name of entries) {
-                if (matchers.some((re) => re.test(name))) {
+                if (matcher.test(name)) {
                   walk(path.join(target, name), index + 1);
                 }
               }
@@ -225,10 +204,14 @@ runs:
                 root: stat.isFile() ? path.dirname(resolved) : resolved
               };
             }
+            if (hasUnsupportedGlobChars(targetPattern)) {
+              throw new Error(
+                `Unsupported glob pattern '${targetPattern}'. Only '*', '?', and '**' are supported.`
+              );
+            }
 
             const searchRoot = getGlobSearchRoot(targetPattern);
-            // Patterns with repeated `**` segments can reach the same file through multiple recursion paths.
-            const matches = [...new Set(collectGlobFileMatches(targetPattern, searchRoot))];
+            const matches = collectGlobFileMatches(targetPattern, searchRoot);
             if (matches.length === 0) {
               if (!fs.existsSync(searchRoot)) {
                 throw new Error(`Glob search root '${searchRoot}' does not exist for pattern '${targetPattern}'`);
