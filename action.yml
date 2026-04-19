@@ -119,7 +119,7 @@ runs:
             return path.resolve(staticParts.join(path.sep));
           }
 
-          const escapeRegex = (value) => value.replace(/[|\\()^$+.]/g, '\\$&');
+          const escapeRegex = (value) => value.replace(/[|\\{}()[\]^$+.]/g, '\\$&');
 
           function toSegmentRegex(segment) {
             const source = segment
