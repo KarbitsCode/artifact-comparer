@@ -129,13 +129,6 @@ runs:
             return new RegExp(`^${source}$`);
           }
 
-          function compactGlobSegments(segments) {
-            return segments.reduce((acc, segment) => {
-              if (segment !== '**' || acc[acc.length - 1] !== '**') acc.push(segment);
-              return acc;
-            }, []);
-          }
-
           function getPatternSegments(pattern, root) {
             const rel = normalizeGlobPath(path.relative(root, path.resolve(normalizeGlobPath(pattern))));
             if (rel === '' || rel === '.') return [];
@@ -145,31 +138,23 @@ runs:
             return rel.split('/').filter(Boolean);
           }
 
-          function inspectPath(target) {
-            try {
-              return fs.lstatSync(target);
-            } catch (error) {
-              throw new Error(`Failed to inspect path '${target}': ${error.message}`);
-            }
-          }
-
-          function readDir(target) {
-            try {
-              return fs.readdirSync(target);
-            } catch (error) {
-              throw new Error(`Failed to read directory '${target}': ${error.message}`);
-            }
-          }
-
           function collectGlobFileMatches(pattern, root, matches = []) {
             if (!fs.existsSync(root)) return matches;
-            const segments = compactGlobSegments(getPatternSegments(pattern, root));
+            const segments = getPatternSegments(pattern, root).reduce((acc, segment) => {
+              if (segment !== '**' || acc[acc.length - 1] !== '**') acc.push(segment);
+              return acc;
+            }, []);
             const compiled = segments.map((segment) => (
               segment === '**' ? null : toSegmentRegex(segment)
             ));
 
             function walk(target, index) {
-              const stat = inspectPath(target);
+              let stat;
+              try {
+                stat = fs.lstatSync(target);
+              } catch (error) {
+                throw new Error(`Failed to inspect path '${target}': ${error.message}`);
+              }
               if (stat.isSymbolicLink()) return;
               if (index === segments.length) {
                 if (stat.isFile()) matches.push(path.resolve(target));
@@ -177,7 +162,12 @@ runs:
               }
               if (!stat.isDirectory()) return;
               const segment = segments[index];
-              const entries = readDir(target);
+              let entries;
+              try {
+                entries = fs.readdirSync(target);
+              } catch (error) {
+                throw new Error(`Failed to read directory '${target}': ${error.message}`);
+              }
               if (segment === '**') {
                 walk(target, index + 1);
                 for (const name of entries) walk(path.join(target, name), index);
