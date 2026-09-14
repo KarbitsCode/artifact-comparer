@@ -1,0 +1,3 @@
+listen:
+  account_logins:
+    - github-actions[bot]
