@@ -18,8 +18,8 @@ jobs:
       actions: write
       contents: read
     steps:
-      - name: Check out action
-        uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.0
 
       - name: Create base artifact
         shell: bash
@@ -28,7 +28,7 @@ jobs:
           printf 'base version\n' > base-output/app.txt
 
       - name: Upload base artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.0
         with:
           name: artifact-comparer-test-base
           path: base-output
