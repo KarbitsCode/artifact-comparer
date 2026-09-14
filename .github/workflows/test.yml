@@ -15,8 +15,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     permissions:
-      actions: write
       contents: read
+      actions: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7.0.0
@@ -39,7 +39,6 @@ jobs:
           mkdir -p head-output
           printf 'head version with more content\n' > head-output/app.txt
           printf 'new file\n' > head-output/new.txt
-          sleep 5
 
       - name: Run local action
         id: compare
