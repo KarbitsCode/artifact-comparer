@@ -33,7 +33,7 @@ runs:
         Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value ('base-prefix={0}' -f $normalizedBasePrefix)
 
     - name: Download base artifact
-      uses: dawidd6/action-download-artifact@v19
+      uses: dawidd6/action-download-artifact@v24
       with:
         github_token: ${{ inputs.github-token }}
         name: ${{ inputs.artifact-name }}
