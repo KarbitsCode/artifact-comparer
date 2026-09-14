@@ -1,0 +1,61 @@
+name: artifact-comparer test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Check out action
+        uses: actions/checkout@v4
+
+      - name: Create base artifact
+        shell: bash
+        run: |
+          mkdir -p base-output
+          printf 'base version\n' > base-output/app.txt
+
+      - name: Upload base artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifact-comparer-test-base
+          path: base-output
+
+      - name: Create head artifact
+        shell: bash
+        run: |
+          mkdir -p head-output
+          printf 'head version with more content\n' > head-output/app.txt
+          printf 'new file\n' > head-output/new.txt
+
+      - name: Run local action
+        id: compare
+        uses: ./
+        with:
+          artifact-name: artifact-comparer-test-base
+          path: ./head-output
+          github-token: ${{ github.token }}
+
+      - name: Verify comparison result
+        shell: bash
+        env:
+          RESULT: ${{ steps.compare.outputs.comparison-result }}
+        run: |
+          node -e '
+            const result = JSON.parse(process.env.RESULT);
+            if (result.base.sizeBytes <= 0) throw new Error("Base artifact is empty");
+            if (result.head.sizeBytes <= result.base.sizeBytes) throw new Error("Head artifact did not grow");
+            if (result.diff.bytes <= 0) throw new Error("Expected a positive size difference");
+          '
