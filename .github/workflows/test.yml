@@ -25,7 +25,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p base-output
-          printf 'base version\n' > base-output/app.txt
+          head -c 20000 /dev/urandom > base-output/app.txt
 
       - name: Upload base artifact
         uses: actions/upload-artifact@v7.0.0
@@ -37,8 +37,8 @@ jobs:
         shell: bash
         run: |
           mkdir -p head-output
-          printf 'head version with more content\n' > head-output/app.txt
-          printf 'new file\n' > head-output/new.txt
+          head -c 30000 /dev/urandom > head-output/app.txt
+          head -c 5000 /dev/urandom > head-output/new.txt
 
       - name: Run local action
         id: compare
@@ -49,13 +49,21 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Verify comparison result
-        shell: bash
+        uses: actions/github-script@v8.0.0
         env:
           RESULT: ${{ steps.compare.outputs.comparison-result }}
-        run: |
-          node -e '
+        with:
+          script: |
             const result = JSON.parse(process.env.RESULT);
-            if (result.base.sizeBytes === 0) console.log("No prior successful run has a baseline artifact yet, this run will become that baseline.");
-            if (result.head.sizeBytes <= result.base.sizeBytes) throw new Error("Head artifact did not grow");
-            if (result.diff.bytes <= 0) throw new Error("Expected a positive size difference");
-          '
+
+            if (result.base.sizeBytes === 0) {
+              core.warning('No prior successful run has a baseline artifact yet - this run will become that baseline.');
+              return;
+            }
+            if (result.head.sizeBytes <= result.base.sizeBytes) {
+              core.setFailed('Head artifact did not grow');
+              return;
+            }
+            if (result.diff.bytes <= 0) {
+              core.setFailed('Expected a positive size difference');
+            }
