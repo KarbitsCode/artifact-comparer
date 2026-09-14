@@ -1,0 +1,27 @@
+name: artifact-comparer approve
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  approve:
+    if: >
+      (
+        github.event_name == 'pull_request' &&
+        github.actor == 'dependabot[bot]'
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Approve PR
+        uses: hmarr/auto-approve-action@v4.0.0
+        with:
+          review-message: "@dependabot squash and merge"
