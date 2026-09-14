@@ -30,7 +30,7 @@ jobs:
       - name: Upload base artifact
         uses: actions/upload-artifact@v7.0.0
         with:
-          name: artifact-comparer-test-base
+          name: artifact-test-base
           path: base-output
 
       - name: Create head artifact
@@ -39,12 +39,13 @@ jobs:
           mkdir -p head-output
           printf 'head version with more content\n' > head-output/app.txt
           printf 'new file\n' > head-output/new.txt
+          sleep 5
 
       - name: Run local action
         id: compare
         uses: ./
         with:
-          artifact-name: artifact-comparer-test-base
+          artifact-name: artifact-test-base
           path: ./head-output
           github-token: ${{ github.token }}
 
