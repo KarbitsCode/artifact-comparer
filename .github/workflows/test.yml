@@ -55,7 +55,6 @@ jobs:
         with:
           script: |
             const result = JSON.parse(process.env.RESULT);
-
             if (result.base.sizeBytes === 0) {
               core.warning('No prior successful run has a baseline artifact yet - this run will become that baseline.');
               return;
