@@ -8,6 +8,10 @@ inputs:
   path:
     description: 'File, directory, or simple glob pattern (`*`, `?`, `**`) for the new/head artifact already available in the workspace'
     required: true
+  artifact-subpath:
+    description: 'Subfolder within the downloaded base artifact to compare (e.g. "dist/")'
+    required: false
+    default: ''
   github-token:
     description: 'GitHub token used to download the base artifact from previous workflow runs'
     required: false
@@ -45,7 +49,7 @@ runs:
       id: compare
       uses: actions/github-script@v9.0.0
       env:
-        BASE_ARTIFACT_PATH: ${{ steps.base_artifact.outputs['base-dir'] }}
+        BASE_ARTIFACT_PATH: ${{ inputs.artifact-subpath && format('{0}/{1}', steps.base_artifact.outputs['base-dir'], inputs.artifact-subpath) || steps.base_artifact.outputs['base-dir'] }}
         HEAD_ARTIFACT_PATH: ${{ inputs.path }}
       with:
         script: |
